@@ -98,7 +98,6 @@ fun TimetableScreen(
     val savedWeekStr = SyncPreferences.getSavedWeek(context, selectedCourse.identity)
     val savedDayIdx = SyncPreferences.getSavedDayIndex(context, selectedCourse.identity)
     val savedSemester = SyncPreferences.getSavedSemester(context, selectedCourse.identity)
-    val savedShowAll = SyncPreferences.getSavedShowAll(context, selectedCourse.identity)
     val savedGroup = remember(selectedCourse.identity) {
         SyncPreferences.getLastGroup(context, selectedCourse.identity)
     }
@@ -139,7 +138,6 @@ fun TimetableScreen(
     var weekMenuExpanded by remember { mutableStateOf(false) }
     var emptyWeeks by rememberSaveable { mutableStateOf(setOf<String>()) }
     var activeWeeks by rememberSaveable { mutableStateOf(setOf<String>()) }
-    var showEmptyWeeks by remember { mutableStateOf(savedShowAll) }
     var scanningWeeks by remember { mutableStateOf(false) }
     var scannedCount by remember { mutableStateOf(0) }
     var totalToScan by remember { mutableStateOf(0) }
@@ -495,58 +493,45 @@ fun TimetableScreen(
                 }
             }
             val visibleWeeks = remember(
-                allAcademicWeeks, emptyWeeks, showEmptyWeeks, activeSemester,
+                allAcademicWeeks, emptyWeeks, activeSemester,
                 firstWeekDate, sem2WeekDate
             ) {
                 val semStart = if (activeSemester == 0) firstWeekDate else sem2WeekDate
                 val semEnd = if (activeSemester == 0) sem2WeekDate?.minusWeeks(1) else null
-                if (showEmptyWeeks) {
-                    // ALL toggle ON: show the full continuous block of weeks
-                    // strictly starting from Week 1 of the active semester
-                    allAcademicWeeks.filter { w ->
-                        (semStart == null || !w.isBefore(semStart)) &&
-                        (semEnd == null || !w.isAfter(semEnd))
-                    }
-                } else {
-                    // Default: strictly hide empty weeks identified by the background scanner
-                    allAcademicWeeks.filter { w ->
-                        (semStart == null || !w.isBefore(semStart)) &&
-                        (semEnd == null || !w.isAfter(semEnd)) &&
-                        w.format(DATE_FORMATTER) !in emptyWeeks
-                    }
+                // Permanently hide empty weeks — only display weeks with scheduled classes
+                allAcademicWeeks.filter { w ->
+                    (semStart == null || !w.isBefore(semStart)) &&
+                    (semEnd == null || !w.isAfter(semEnd)) &&
+                    w.format(DATE_FORMATTER) !in emptyWeeks
                 }
             }
 
-            // When "All" is ON, always show the actual selection.
-            // When "All" is OFF and currentMonday is not visible, jump to the first
-            // visible week so the week picker shows a valid, non-empty week.
-            val displayMonday = if (showEmptyWeeks) currentMonday
-                else if (visibleWeeks.isNotEmpty() && currentMonday !in visibleWeeks)
-                    visibleWeeks.firstOrNull() ?: currentMonday
-                else currentMonday
+            // Always jump to the first visible week if currentMonday is not visible
+            val displayMonday = if (visibleWeeks.isNotEmpty() && currentMonday !in visibleWeeks)
+                visibleWeeks.firstOrNull() ?: currentMonday
+            else currentMonday
 
-            // For new courses (no saved state), start at semester week 1
+            // For new courses (no saved state), jump to the first non-empty week
             var weekOneSet by remember { mutableStateOf(false) }
-            LaunchedEffect(semesterWeeks) {
-                if (!hasSavedState && !weekOneSet && semesterWeeks.isNotEmpty()) {
-                    currentMonday = semesterWeeks.first()
+            LaunchedEffect(visibleWeeks) {
+                if (!hasSavedState && !weekOneSet && visibleWeeks.isNotEmpty()) {
+                    currentMonday = visibleWeeks.first()
                     weekOneSet = true
                 }
             }
 
-            // When user manually switches semester tab, reset to that semester's first week
+            // When user manually switches semester tab, reset to that semester's first non-empty week
             LaunchedEffect(activeSemester) {
-                if (semesterWeeks.isNotEmpty()) {
-                    // If saved state exists, only jump if currentMonday is outside the new semester
-                    if (!hasSavedState || currentMonday !in semesterWeeks) {
-                        currentMonday = semesterWeeks.first()
+                if (visibleWeeks.isNotEmpty()) {
+                    if (!hasSavedState || currentMonday !in visibleWeeks) {
+                        currentMonday = visibleWeeks.first()
                     }
                 }
             }
 
             // ── Persist view state on any change ───────────────────────────
             LaunchedEffect(
-                currentMonday, selectedDayIndex, showEmptyWeeks,
+                currentMonday, selectedDayIndex,
                 activeSemester, selectedCourse.identity
             ) {
                 SyncPreferences.saveCourseViewState(
@@ -554,7 +539,7 @@ fun TimetableScreen(
                     selectedCourse.identity,
                     semester = activeSemester,
                     weekStart = currentMonday.format(DATE_FORMATTER),
-                    showAll = showEmptyWeeks,
+                    showAll = false,  // permanently false — empty weeks are always hidden
                     dayIndex = selectedDayIndex
                 )
             }
@@ -634,17 +619,6 @@ fun TimetableScreen(
                         }
                     }
                 }
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "All",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Switch(
-                    checked = showEmptyWeeks,
-                    onCheckedChange = { showEmptyWeeks = it },
-                    modifier = Modifier.padding(start = 4.dp)
-                )
             }
 
             // ── Group filter (only show if there are multiple groups) ──────

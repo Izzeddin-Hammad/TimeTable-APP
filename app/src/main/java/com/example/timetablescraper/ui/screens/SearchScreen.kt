@@ -214,12 +214,15 @@ fun SearchScreen(
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
 
+                // Global set of expanded result identities — no artificial cap
+                val expandedIdentities = remember { mutableStateOf(setOf<String>()) }
+
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(results, key = { it.identity }) { result ->
-                        var expanded by remember { mutableStateOf(false) }
+                        val isExpanded = result.identity in expandedIdentities.value
                         var fetchedGroups by remember { mutableStateOf<List<String>>(emptyList()) }
                         var fetchingGroups by remember { mutableStateOf(false) }
 
@@ -234,8 +237,8 @@ fun SearchScreen(
                             // Compact expand arrow to fetch and show groups
                             IconButton(
                                 onClick = {
-                                    if (!expanded) {
-                                        expanded = true
+                                    if (!isExpanded) {
+                                        expandedIdentities.value = expandedIdentities.value + result.identity
                                         fetchingGroups = true
                                         coroutineScope.launch {
                                             try {
@@ -274,7 +277,7 @@ fun SearchScreen(
                                             }
                                         }
                                     } else {
-                                        expanded = false
+                                        expandedIdentities.value = expandedIdentities.value - result.identity
                                         fetchedGroups = emptyList()
                                     }
                                 },
@@ -283,12 +286,12 @@ fun SearchScreen(
                                 if (fetchingGroups) {
                                     CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                                 } else {
-                                    Text(if (expanded) "▾" else "▸", style = MaterialTheme.typography.titleSmall)
+                                    Text(if (isExpanded) "▾" else "▸", style = MaterialTheme.typography.titleSmall)
                                 }
                             }
 
                             // Group chips
-                            if (expanded && fetchedGroups.isNotEmpty()) {
+                            if (isExpanded && fetchedGroups.isNotEmpty()) {
                                 LazyRow(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
@@ -302,7 +305,7 @@ fun SearchScreen(
                                         )
                                     }
                                 }
-                            } else if (expanded && !fetchingGroups) {
+                            } else if (isExpanded && !fetchingGroups) {
                                 Text(
                                     "No groups found for this course.",
                                     style = MaterialTheme.typography.bodySmall,
