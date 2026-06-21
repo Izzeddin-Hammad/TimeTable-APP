@@ -69,6 +69,15 @@ fun SettingsScreen(
     var newestCacheTime by remember { mutableStateOf<Long?>(null) }
     var showClearConfirm by remember { mutableStateOf(false) }
     var savedCourses by remember { mutableStateOf<List<SavedCourseEntity>>(emptyList()) }
+    var cachedCourseIds by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    /** Refresh the per-course cache list from the database. */
+    fun refreshCachedCourses() {
+        coroutineScope.launch {
+            val dao = app.database.timetableDao()
+            cachedCourseIds = dao.getDistinctCourseIdentities()
+        }
+    }
 
     // ── Helper: refresh cache stats ──────────────────────────────────
     fun refreshCacheStats() {
@@ -95,13 +104,14 @@ fun SettingsScreen(
         }
     }
 
-    // Load cache stats and saved courses
+    // Load cache stats, saved courses, and cached course identities
     LaunchedEffect(Unit) {
         val dao = app.database.timetableDao()
         cacheEventCount = dao.count()
         cacheWeeksCount = dao.countDistinctWeeks()
         val courses = dao.getDistinctCourseIdentities()
         cacheCoursesCount = courses.size
+        cachedCourseIds = courses
         newestCacheTime = dao.getNewestFetchedAt()
         savedCourses = dao.getSavedCourses()
     }
@@ -457,6 +467,78 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Clear All Cached Data")
+                    }
+                }
+            }
+
+            // ── Per-course cache management ────────────────────────────────
+            if (cachedCourseIds.isNotEmpty()) {
+                Card {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            "Cached Courses",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "Delete individual course caches without wiping everything.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        cachedCourseIds.forEach { id ->
+                            // Resolve course name from saved courses, or show truncated identity
+                            val saved = savedCourses.firstOrNull { it.identity == id }
+                            val displayName = saved?.name?.substringBefore("/") ?: id.take(12)
+                            val detail = saved?.programmeCode ?: ""
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        displayName,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    if (detail.isNotEmpty()) {
+                                        Text(
+                                            detail,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            app.repository.clearCacheForCourse(id)
+                                            // Refresh stats and list
+                                            val dao = app.database.timetableDao()
+                                            cacheEventCount = dao.count()
+                                            cacheWeeksCount = dao.countDistinctWeeks()
+                                            cachedCourseIds = dao.getDistinctCourseIdentities()
+                                            cacheCoursesCount = cachedCourseIds.size
+                                            newestCacheTime = dao.getNewestFetchedAt()
+                                        }
+                                    },
+                                    modifier = Modifier.size(48.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Delete cache for $displayName",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            HorizontalDivider()
+                        }
                     }
                 }
             }

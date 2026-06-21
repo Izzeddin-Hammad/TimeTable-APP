@@ -48,6 +48,10 @@ interface TimetableDao {
     @Query("DELETE FROM cached_events WHERE fetchedAt < :olderThan")
     suspend fun pruneOlderThan(olderThan: Long)
 
+    /** Delete all cached events for a specific course (granular cache management). */
+    @Query("DELETE FROM cached_events WHERE courseIdentity = :courseIdentity")
+    suspend fun deleteForCourse(courseIdentity: String)
+
     /** Count all cached rows (for diagnostics). */
     @Query("SELECT COUNT(*) FROM cached_events")
     suspend fun count(): Int

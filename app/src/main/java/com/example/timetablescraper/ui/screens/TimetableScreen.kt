@@ -584,7 +584,12 @@ fun TimetableScreen(
                         value = label,
                         onValueChange = {},
                         readOnly = true,
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = weekMenuExpanded) },
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(
+                                expanded = weekMenuExpanded,
+                                modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                            )
+                        },
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
@@ -647,7 +652,12 @@ fun TimetableScreen(
                         value = selectedGroup ?: "All groups",
                         onValueChange = {},
                         readOnly = true,
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = groupMenuExpanded) },
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(
+                                expanded = groupMenuExpanded,
+                                modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                            )
+                        },
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth().menuAnchor()

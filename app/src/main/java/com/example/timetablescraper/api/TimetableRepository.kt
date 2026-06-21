@@ -205,6 +205,11 @@ class TimetableRepository(
         dao.pruneOlderThan(Long.MAX_VALUE)
     }
 
+    /** Delete cached data for a single course (granular cache management). */
+    suspend fun clearCacheForCourse(courseIdentity: String) {
+        dao.deleteForCourse(courseIdentity)
+    }
+
     // ── Saved courses ──────────────────────────────────────────────────
 
     /** Get all saved courses, newest first. */

@@ -36,12 +36,14 @@ class TimetableApiService(
     private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 
     /** Shared HTTP client.  [retryOnConnectionFailure] is disabled so the
-     *  app layer can control backoff (avoid silent 120s+ hangs on slow servers). */
+     *  app layer can control backoff (avoid silent 120s+ hangs on slow servers).
+     *  [RateLimitInterceptor] enforces 5 req/10s to protect upstream server. */
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
         .retryOnConnectionFailure(false)
+        .addInterceptor(RateLimitInterceptor(maxRequests = 5, perSeconds = 10))
         .build()
 
     private val headers: Map<String, String> = mapOf(
