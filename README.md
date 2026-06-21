@@ -46,7 +46,13 @@ UI (Jetpack Compose)
 - **Coroutines** for async operations
 - **JUnit** + **Room Testing** for tests (113+ test scenarios)
 
-## Setup
+## Download
+
+[**Download latest APK (v1.0)**](https://github.com/Izzeddin-Hammad/TimeTable-APP/raw/main/releases/TimeTable-v1.0-debug.apk)
+
+> Requires Android 8.0+ (API 26). Enable "Install from unknown sources" to sideload.
+
+## Setup (for developers)
 
 1. Clone the repo
 2. Open in Android Studio
