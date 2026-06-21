@@ -31,6 +31,7 @@ A prototype Android timetable app that fetches your TU Dublin university schedul
 - **Removed "All" Toggle** — Empty academic weeks are now permanently hidden; the week dropdown only ever displays weeks with scheduled classes (no toggle UX clutter)
 - **Subgroup Expand Unlimited** — Removed artificial caps on subgroup expansion in search results; any number of courses can be expanded simultaneously to compare groups
 - **Week 1 Default (Deep Fix)** — New courses now jump to `visibleWeeks.first()` (the first non-empty week) instead of relying on fallback guesswork, eliminating the Week 4 regression at the root
+- **Empty Weeks Permanently Hidden** — Week dropdown only shows weeks in `activeWeeks` (confirmed by the scanner); unscanned and empty weeks are excluded, and the initially loaded week is immediately added to `activeWeeks` so it appears right away
 - **In-App Self-Updating** — Queries GitLab Releases API on launch; prompts with an update dialog when a newer version is detected; downloads APK via Android DownloadManager and launches the system package installer
 - **Fail-Safe Fallback** — HTTP 429/500 and network errors fall back to stale cache with an "⚠️ Offline / Cached Mode" banner
 - **Background Sync** — WorkManager periodically refreshes cached timetables with configurable strategy-aware scheduling

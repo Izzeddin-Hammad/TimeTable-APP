@@ -104,14 +104,18 @@ fun TimetableScreen(
 
     val hasSavedState = savedWeekStr != null
 
-    // currentMonday: restored from prefs → Week 1 for new/uncached courses
+    // currentMonday: restored from saved prefs → Week 4 for new/uncached courses → overridden below
     var currentMonday by remember {
         mutableStateOf(
             savedWeekStr?.let { try { java.time.LocalDate.parse(it) } catch (_: Exception) { null } }
                 ?: if (!hasSavedState) {
-                    // For new/uncached courses ONLY, default to the first academic week
-                    // instead of today's Monday (which could be Week 4+ of the semester).
-                    TimetableUtils.generateAcademicWeeks().firstOrNull()
+                    // For new/uncached courses: use the fallback semester start (October Monday)
+                    // instead of the raw academic year start (September) which is often summer break.
+                    // The LaunchedEffect(visibleWeeks) below will override this to the real
+                    // first week once the background scanner finishes.
+                    val allW = TimetableUtils.generateAcademicWeeks()
+                    allW.firstOrNull { it.monthValue == 10 && it.dayOfMonth <= 7 }
+                        ?: allW.firstOrNull()
                         ?: TimetableUtils.getCurrentMonday()
                 } else {
                     TimetableUtils.getCurrentMonday()
@@ -259,6 +263,12 @@ fun TimetableScreen(
             // with the week picker. The displayMonday logic will jump the
             // visual selection to the first valid semester week if
             // currentMonday falls outside semester bounds.
+            if (events.isNotEmpty()) {
+                // Add the current week to activeWeeks so it shows in the dropdown immediately
+                activeWeeks = activeWeeks + currentMonday.format(DATE_FORMATTER)
+            }
+
+            // Mark empty weeks so the visibleWeeks filter removes them later
             if (events.isEmpty() && !forceRefresh && !userPickedWeek) {
                 val weekStr = currentMonday.format(DATE_FORMATTER)
                 emptyWeeks = emptyWeeks + weekStr
@@ -498,11 +508,13 @@ fun TimetableScreen(
             ) {
                 val semStart = if (activeSemester == 0) firstWeekDate else sem2WeekDate
                 val semEnd = if (activeSemester == 0) sem2WeekDate?.minusWeeks(1) else null
-                // Permanently hide empty weeks — only display weeks with scheduled classes
+                // Only show weeks confirmed to have classes (activeWeeks).
+                // Weeks not yet scanned (in neither set) are excluded until the background
+                // scanner confirms them, permanently hiding empty and unscanned weeks.
                 allAcademicWeeks.filter { w ->
+                    w.format(DATE_FORMATTER) in activeWeeks &&
                     (semStart == null || !w.isBefore(semStart)) &&
-                    (semEnd == null || !w.isAfter(semEnd)) &&
-                    w.format(DATE_FORMATTER) !in emptyWeeks
+                    (semEnd == null || !w.isAfter(semEnd))
                 }
             }
 
@@ -511,12 +523,12 @@ fun TimetableScreen(
                 visibleWeeks.firstOrNull() ?: currentMonday
             else currentMonday
 
-            // For new courses (no saved state), jump to the first non-empty week
-            var weekOneSet by remember { mutableStateOf(false) }
+            // For new courses (no saved state), jump to the first visible (non-empty) week.
+            // Re-fires whenever visibleWeeks updates (e.g. scan finishes populating activeWeeks)
+            // so the user always lands on Week 1 after the scan completes.
             LaunchedEffect(visibleWeeks) {
-                if (!hasSavedState && !weekOneSet && visibleWeeks.isNotEmpty()) {
+                if (!hasSavedState && !userPickedWeek && visibleWeeks.isNotEmpty()) {
                     currentMonday = visibleWeeks.first()
-                    weekOneSet = true
                 }
             }
 
