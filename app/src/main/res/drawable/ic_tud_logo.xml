@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+
+    <!-- Calendar page outline -->
+    <path
+        android:pathData="M130,90L130,110L382,110L382,90"
+        android:strokeWidth="12"
+        android:strokeColor="#1b262c"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M170,90L170,68"
+        android:strokeWidth="12"
+        android:strokeColor="#1b262c"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M342,90L342,68"
+        android:strokeWidth="12"
+        android:strokeColor="#1b262c"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M130,110L130,410Q130,424 144,424L368,424Q382,424 382,410L382,110Z"
+        android:strokeWidth="12"
+        android:strokeColor="#1b262c"
+        android:fillColor="#00000000"
+        android:strokeLineJoin="round" />
+
+    <!-- Folded corner -->
+    <path
+        android:pathData="M344,110L344,144Q344,158 358,158L382,158"
+        android:strokeWidth="12"
+        android:strokeColor="#1b262c"
+        android:fillColor="#00000000"
+        android:strokeLineJoin="round" />
+
+    <!-- Clock circle -->
+    <path
+        android:pathData="M200,212m-50,0a50,50 0,1 1,100 0a50,50 0,1 1,-100 0"
+        android:strokeWidth="8"
+        android:strokeColor="#1b262c"
+        android:fillColor="#00000000" />
+
+    <!-- Clock center dot -->
+    <path
+        android:pathData="M200,212m-5,0a5,5 0,1 1,10 0a5,5 0,1 1,-10 0"
+        android:fillColor="#1b262c" />
+
+    <!-- Clock hour hand (pointing to 10) -->
+    <path
+        android:pathData="M200,212L185,192"
+        android:strokeWidth="7"
+        android:strokeColor="#1b262c"
+        android:strokeLineCap="round" />
+
+    <!-- Clock minute hand (pointing to 2) -->
+    <path
+        android:pathData="M200,212L232,202"
+        android:strokeWidth="4"
+        android:strokeColor="#1b262c"
+        android:strokeLineCap="round" />
+
+    <!-- Time slot lines -->
+    <path
+        android:pathData="M130,290L250,290"
+        android:strokeWidth="7"
+        android:strokeColor="#1b262c"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M130,324L220,324"
+        android:strokeWidth="7"
+        android:strokeColor="#1b262c"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M130,358L180,358"
+        android:strokeWidth="7"
+        android:strokeColor="#1b262c"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M130,392L240,392"
+        android:strokeWidth="7"
+        android:strokeColor="#1b262c"
+        android:strokeLineCap="round" />
+</vector>
