@@ -43,14 +43,9 @@ import com.example.timetablescraper.api.SearchResult
 import com.example.timetablescraper.api.TimetableEvent
 import com.example.timetablescraper.api.TimetableUtils
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -154,12 +149,18 @@ fun TimetableScreen(
     val days = listOf("Mon", "Tue", "Wed", "Thu", "Fri")
     val coroutineScope = rememberCoroutineScope()
 
-    // Apply group filter — splits group string to match individual groups exactly
-    val displayEvents = if (selectedGroup != null) {
-        events.filter { event ->
-            event.group.split("+").any { g -> g.trim() == selectedGroup }
+    // Apply group filter — splits group string to match individual groups exactly.
+    // Wrapped in derivedStateOf so the filter only recomputes when events or
+    // selectedGroup actually change, not on every recomposition.
+    val displayEvents by remember(events, selectedGroup) {
+        derivedStateOf {
+            if (selectedGroup != null) {
+                events.filter { event ->
+                    event.group.split("+").any { g -> g.trim() == selectedGroup }
+                }
+            } else events
         }
-    } else events
+    }
 
     // Check if this course is saved/bookmarked
     LaunchedEffect(selectedCourse.identity) {
@@ -177,9 +178,11 @@ fun TimetableScreen(
     // ── Background week scanner (serial) ────────────────────────────
     // After the first successful load, scan all remaining weeks in the
     // background so empty ones disappear from the dropdown automatically.
-    // Serial (1 worker): the API rate limiter allows 5 req/10s, so
+    // Sequential single-threaded: the API rate limiter allows 5 req/10s, so
     // parallelism would exhaust the bucket instantly on any course
     // with more than 5 weeks — leaving most weeks as "failed."
+    // Uses a simple for-loop instead of async+semaphore to avoid
+    // allocating 30+ coroutine/Deferred objects for serial work.
     LaunchedEffect(events.isNotEmpty(), selectedCourse.identity) {
         if (!events.isNotEmpty() || scanningWeeks) return@LaunchedEffect
         scanningWeeks = true
@@ -192,40 +195,30 @@ fun TimetableScreen(
         totalToScan = toScan.size
         scannedCount = 0
 
-        // Serial scan: the API rate limiter allows 5 requests per 10 seconds,
-        // so a single worker stays safely within quota while a parallel scan
-        // (4 workers) exhausts the bucket instantly on any course with >5 weeks.
-        val parallelism = 1
-        val semaphore = Semaphore(parallelism)
-        coroutineScope {
-            toScan.map { monday ->
-                async {
-                    semaphore.acquire()
-                    try {
-                        val result = repository.loadTimetable(
-                            courseIdentity = selectedCourse.identity,
-                            timetableTypeId = selectedCourse.timetable_type_id,
-                            mondayDate = monday,
-                            forceRefresh = false,
-                            context = context,
-                            courseName = selectedCourse.name
-                        )
-                        val key = monday.format(DATE_FORMATTER)
-                        if (result.events.isEmpty()) {
-                            emptyWeeks = emptyWeeks + key
-                        } else {
-                            activeWeeks = activeWeeks + key
-                        }
-                    } catch (_: Exception) {
-                        // Network error — track as failed so it's hidden from
-                        // the dropdown without being permanently marked empty
-                        failedWeeks = failedWeeks + monday.format(DATE_FORMATTER)
-                    } finally {
-                        scannedCount++
-                        semaphore.release()
-                    }
+        // Serial execution: one request at a time respects the rate limiter.
+        // No coroutine overhead — simple sequential loop.
+        for (monday in toScan) {
+            try {
+                val result = repository.loadTimetable(
+                    courseIdentity = selectedCourse.identity,
+                    timetableTypeId = selectedCourse.timetable_type_id,
+                    mondayDate = monday,
+                    forceRefresh = false,
+                    context = context,
+                    courseName = selectedCourse.name
+                )
+                val key = monday.format(DATE_FORMATTER)
+                if (result.events.isEmpty()) {
+                    emptyWeeks = emptyWeeks + key
+                } else {
+                    activeWeeks = activeWeeks + key
                 }
-            }.awaitAll()
+            } catch (_: Exception) {
+                // Network error — track as failed so it's hidden from
+                // the dropdown without being permanently marked empty
+                failedWeeks = failedWeeks + monday.format(DATE_FORMATTER)
+            }
+            scannedCount++
         }
         scanningWeeks = false
     }

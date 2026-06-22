@@ -118,7 +118,7 @@ class TimetableSyncWorker(
         try {
             val database = TimetableDatabase.getInstance(applicationContext)
             val dao = database.timetableDao()
-            val apiService = TimetableApiService()
+            val apiService = TimetableApiService.DEFAULT  // reuse singleton OkHttp client + rate limiter
 
             val courseIdentities = dao.getDistinctCourseIdentities()
             if (courseIdentities.isEmpty()) {
