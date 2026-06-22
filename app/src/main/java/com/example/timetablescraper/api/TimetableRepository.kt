@@ -204,7 +204,8 @@ class TimetableRepository(
         group = group
     )
 
-    /** Delete all cached data (e.g. on app reset). */
+    /** Delete all cached timetable data (e.g. on app reset).
+     *  Saved/bookmarked courses and search history are NOT affected. */
     suspend fun clearAll() {
         dao.pruneOlderThan(Long.MAX_VALUE)
     }

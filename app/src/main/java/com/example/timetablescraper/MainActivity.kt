@@ -1,17 +1,22 @@
 package com.example.timetablescraper
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
+import com.example.timetablescraper.ui.screens.FatalErrorScreen
 import com.example.timetablescraper.ui.screens.SearchScreen
 import com.example.timetablescraper.ui.screens.SettingsScreen
 import com.example.timetablescraper.ui.screens.TimetableScreen
 import com.example.timetablescraper.ui.theme.TimetableScraperTheme
 import com.example.timetablescraper.api.SearchResult
+import com.example.timetablescraper.api.TimetableRepository
 import com.example.timetablescraper.update.UpdateChecker
 import com.example.timetablescraper.update.UpdateManager
 import com.example.timetablescraper.update.UpdateReceiver
@@ -19,16 +24,88 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // ── Check for crash from previous session ───────────────
+        val previousCrash = CrashHandler.getCrashInfo(this)
+        if (previousCrash != null) {
+            // Clear the crash flag immediately so "Try Again" works
+            CrashHandler.clearCrashFlag(this)
+        }
+
+        // This state drives the FatalErrorScreen — it lives here
+        // (outside setContent) so it survives composition restarts
+        // during try-catch recovery within the same session.
+        val crashState = mutableStateOf<CrashHandler.CrashInfo?>(previousCrash)
+
         setContent {
             TimetableScraperTheme {
-                MainApp()
+                val currentCrash = crashState.value
+
+                if (currentCrash != null) {
+                    // ── Fatal recovery screen (from previous crash) ─
+                    FatalErrorScreen(
+                        crashInfo = currentCrash,
+                        onClearAndRestart = {
+                            val intent = packageManager
+                                .getLaunchIntentForPackage(packageName)
+                            if (intent != null) {
+                                intent.addFlags(
+                                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                                    Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                )
+                                finishAffinity()
+                                startActivity(intent)
+                                Runtime.getRuntime().exit(0)
+                            }
+                        },
+                        onTryAgain = {
+                            crashState.value = null
+                        }
+                    )
+                } else {
+                    // ── Normal application UI ────────────────────
+                    MainApp()
+                }
             }
+        }
+    }
+}
+
+// ── Star + Save helper ────────────────────────────────────────────
+// Starring a course automatically saves it (bookmarks it) with a
+// display name that includes the subgroup when known.
+// Unstarring does NOT unsave — the course remains in saved/bookmarked.
+private fun applyStarAndSave(
+    context: Context,
+    course: SearchResult,
+    scope: CoroutineScope,
+    repo: TimetableRepository,
+    group: String? = null
+) {
+    SyncPreferences.setStarredCourse(context, course.identity, course.name, course.timetable_type_id)
+    scope.launch {
+        try {
+            if (!repo.isCourseSaved(course.identity)) {
+                val nameWithGroup = if (group != null) {
+                    val short = group.split("/").drop(2).joinToString("/")
+                    "${course.name} ($short)"
+                } else course.name
+                val courseToSave = course.copy(name = nameWithGroup)
+                repo.saveCourse(courseToSave, group)
+            }
+        } catch (_: Exception) {
+            // Save failure must not block the starring operation
         }
     }
 }
@@ -36,7 +113,31 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun MainApp() {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
+
+    // Protected coroutine scope with a fatal-error handler.
+    // Catches unhandled exceptions from launched coroutines and persists
+    // them so the next launch shows FatalErrorScreen.
+    val coroutineScope = remember {
+        CoroutineScope(
+            Dispatchers.Main + SupervisorJob() +
+            CoroutineExceptionHandler { _, throwable ->
+                Log.e("MainApp", "Unhandled coroutine crash", throwable)
+                // Persist crash info so the next launch shows FatalErrorScreen.
+                context.getSharedPreferences("crash_prefs", Context.MODE_PRIVATE)
+                    .edit()
+                    .putBoolean("crash_occurred", true)
+                    .putString("crash_message", throwable.message ?: "Coroutine crash")
+                    .putString("crash_stacktrace", throwable.stackTraceToString())
+                    .putLong("crash_timestamp", System.currentTimeMillis())
+                    .apply()
+            }
+        )
+    }
+    DisposableEffect(Unit) {
+        onDispose { coroutineScope.cancel() }
+    }
+
+    val repository = TimetableApplication.instance.repository
 
     var starred by remember { mutableStateOf(SyncPreferences.getStarredCourse(context)) }
     val initialScreen = if (starred != null) "TIMETABLE" else "SEARCH"
@@ -68,10 +169,14 @@ private fun MainApp() {
     LaunchedEffect(Unit) {
         if (updateCheckDone) return@LaunchedEffect
         updateCheckDone = true
-        val result = UpdateChecker.checkForUpdate()
-        updateResult = result
-        if (result.updateAvailable && result.downloadUrl != null) {
-            showUpdateDialog = true
+        try {
+            val result = UpdateChecker.checkForUpdate()
+            updateResult = result
+            if (result.updateAvailable && result.downloadUrl != null) {
+                showUpdateDialog = true
+            }
+        } catch (_: Exception) {
+            // Update check failure is non-fatal — silently ignore
         }
     }
 
@@ -177,25 +282,102 @@ private fun MainApp() {
                     preselectedGroup = group
                     currentScreen = "TIMETABLE"
                 },
-                onSettingsClick = { currentScreen = "SETTINGS" }
+                onSettingsClick = { currentScreen = "SETTINGS" },
+                hasStarredCourse = starred != null,
+                onHomeClick = { goToStarredOrExit() }
             )
         }
 
         "TIMETABLE" -> {
             selectedCourse?.let { course ->
                 val viewingStarred = starred?.first == course.identity
+                var showReplaceStarDialog by remember { mutableStateOf(false) }
+                var pendingStarCourse by remember { mutableStateOf<SearchResult?>(null) }
+
+                // ── Replace-star confirmation dialog ─────────────────────────
+                if (showReplaceStarDialog && pendingStarCourse != null) {
+                    val currentStarredName = starred?.second ?: ""
+                    val newName = pendingStarCourse!!.name
+                    AlertDialog(
+                        onDismissRequest = {
+                            showReplaceStarDialog = false
+                            pendingStarCourse = null
+                        },
+                        title = { Text("Replace Starred Course?") },
+                        text = {
+                            Text(
+                                "\"$currentStarredName\" is currently your pinned course. " +
+                                "Do you want to replace it with \"$newName\"?"
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                val pc = pendingStarCourse!!
+                                // Remove star from old course
+                                SyncPreferences.setStarredCourse(context, null, null, null)
+                                starred = null
+                                // Remove old saved state before replacing
+                                showReplaceStarDialog = false
+                                pendingStarCourse = null
+                                // Apply star + save for the new course
+                                applyStarAndSave(context, pc, coroutineScope, repository)
+                                starred = Triple(pc.identity, pc.name, pc.timetable_type_id)
+                            }) {
+                                Text("Replace")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = {
+                                showReplaceStarDialog = false
+                                pendingStarCourse = null
+                            }) {
+                                Text("Cancel")
+                            }
+                        }
+                    )
+                }
+
                 TimetableScreen(
                     selectedCourse = course,
                     preselectedGroup = preselectedGroup,
                     isStarred = viewingStarred,
-                    onStarToggle = { star ->
+                    onStarToggle = { star, group ->
                         if (star) {
-                            SyncPreferences.setStarredCourse(
-                                context, course.identity, course.name, course.timetable_type_id)
-                            starred = Triple(course.identity, course.name, course.timetable_type_id)
+                            // If another course is already starred, ask for confirmation
+                            val existingStar = starred
+                            if (existingStar != null && existingStar.first != course.identity) {
+                                pendingStarCourse = course
+                                showReplaceStarDialog = true
+                            } else {
+                                applyStarAndSave(context, course, coroutineScope, repository, group)
+                                starred = Triple(course.identity, course.name, course.timetable_type_id)
+                            }
                         } else {
+                            // Unstar — remove star ONLY (keep saved/bookmark unchanged)
                             SyncPreferences.setStarredCourse(context, null, null, null)
                             starred = null
+                        }
+                    },
+                    onSavedChanged = { isNowSaved, group ->
+                        val currentStarredId = starred?.first
+                        if (isNowSaved) {
+                            // Saving a course → auto-star it (pin to home).
+                            // If another course is already starred, ask for confirmation.
+                            if (currentStarredId != null && currentStarredId != course.identity) {
+                                pendingStarCourse = course
+                                showReplaceStarDialog = true
+                            } else if (currentStarredId == null) {
+                                // No existing star → star this course directly
+                                applyStarAndSave(context, course, coroutineScope, repository, group)
+                                starred = Triple(course.identity, course.name, course.timetable_type_id)
+                            }
+                            // If currentStarredId == course.identity → already starred, nothing to do
+                        } else {
+                            // Unsaving a course → unstar it if it was the pinned one
+                            if (currentStarredId == course.identity) {
+                                SyncPreferences.setStarredCourse(context, null, null, null)
+                                starred = null
+                            }
                         }
                     },
                     onSearchClick = {

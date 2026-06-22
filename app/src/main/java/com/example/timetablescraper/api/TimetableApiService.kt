@@ -109,6 +109,7 @@ class TimetableApiService(
             val request = Request.Builder()
                 .url(url)
                 .post(bodyJson.toRequestBody(JSON_MEDIA))
+                .addHeader("X-Course-Identity", identity)
                 .apply { headers.forEach { (k, v) -> addHeader(k, v) } }
                 .build()
 
@@ -199,6 +200,70 @@ class TimetableApiService(
             .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME).replace("+00:00", ".000Z")
     }
 
+    // ── Full academic year fetch (replaces the 30-week serial scanner) ─
+
+    /**
+     * Fetch all events for the full academic year (September – April) in a
+     * single request.  The response is used to classify every week as
+     * active (has events) or empty (no events) instantly — no more 60 s
+     * serial scan.
+     */
+    suspend fun fetchFullYearTimetable(
+        categoryTypeId: String,
+        identity: String
+    ): TimetableResponse = withContext(Dispatchers.IO) {
+        val allWeeks = TimetableUtils.generateAcademicWeeks()
+        val firstMonday = allWeeks.first()
+        val lastSunday = allWeeks.last().plusDays(6)
+
+        val url = buildRangeUrl(firstMonday, lastSunday)
+        val bodyJson = buildRangeRequestBody(categoryTypeId, identity, firstMonday, lastSunday)
+
+        val request = Request.Builder()
+            .url(url)
+            .post(bodyJson.toRequestBody(JSON_MEDIA))
+            .addHeader("X-Course-Identity", identity)
+            .apply { headers.forEach { (k, v) -> addHeader(k, v) } }
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val respBody = response.body?.string()
+                ?: throw Exception("Empty response from timetable API")
+            if (!response.isSuccessful)
+                throw TimetableApiException.fromResponse(response.code, respBody)
+            parseTimetableResponse(respBody)
+        }
+    }
+
+    /** Build the events URL for an arbitrary [from]–[to] range. */
+    private fun buildRangeUrl(from: LocalDate, to: LocalDate): String {
+        val startRange = from.minusDays(1).atTime(23, 0).atOffset(ZoneOffset.UTC)
+            .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME).replace("+00:00", ".000Z")
+        val endRange = to.atTime(23, 59, 59).atOffset(ZoneOffset.UTC)
+            .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME).replace("+00:00", ".000Z")
+        return "${config.apiBaseUrl}/CategoryTypes/Categories/Events/Filter/${config.institutionId}" +
+                "?startRange=$startRange&endRange=$endRange"
+    }
+
+    /** Build the request body for an arbitrary [from]–[to] range. */
+    private fun buildRangeRequestBody(
+        categoryTypeId: String,
+        identity: String,
+        from: LocalDate,
+        to: LocalDate
+    ): String {
+        return JSONObject().apply {
+            put("ViewOptions", cloneViewOptions(from, to))
+            put("CategoryTypesWithIdentities", JSONArray().put(JSONObject().apply {
+                put("CategoryTypeIdentity", categoryTypeId)
+                put("CategoryIdentities", JSONArray().put(identity))
+            }))
+            put("FetchBookings", false)
+            put("FetchPersonalEvents", false)
+            put("PersonalIdentities", JSONArray())
+        }.toString()
+    }
+
     // ── Response parsing ──────────────────────────────────────────────
 
     private fun parseSearchResponse(body: String): SearchResponse {
@@ -263,7 +328,8 @@ class TimetableApiService(
         val DEFAULT: TimetableApiService by lazy { TimetableApiService() }
 
         fun getCurrentMonday(): LocalDate {
-            return LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+            return TimetableUtils.currentDublinDate()
+                .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
         }
     }
 }

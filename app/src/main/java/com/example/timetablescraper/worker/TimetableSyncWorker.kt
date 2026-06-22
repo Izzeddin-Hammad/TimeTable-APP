@@ -131,7 +131,7 @@ class TimetableSyncWorker(
                 return@withContext Result.success()
             }
 
-            val currentMonday = LocalDate.now()
+            val currentMonday = TimetableUtils.currentDublinDate()
                 .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
             val weekStart = currentMonday.format(DateTimeFormatter.ISO_LOCAL_DATE)
             val now = System.currentTimeMillis()

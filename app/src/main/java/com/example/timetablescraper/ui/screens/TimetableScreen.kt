@@ -23,6 +23,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -41,6 +42,7 @@ import com.example.timetablescraper.worker.SyncNotificationManager
 import com.example.timetablescraper.api.ApiEvent
 import com.example.timetablescraper.api.CacheSource
 import com.example.timetablescraper.api.SearchResult
+import com.example.timetablescraper.api.TimetableApiService
 import com.example.timetablescraper.api.TimetableEvent
 import com.example.timetablescraper.api.TimetableUtils
 import kotlinx.coroutines.CancellationException
@@ -80,10 +82,11 @@ fun TimetableScreen(
     onBack: () -> Unit,
     preselectedGroup: String? = null,
     isStarred: Boolean = false,
-    onStarToggle: (Boolean) -> Unit = {},
+    onStarToggle: (star: Boolean, group: String?) -> Unit = { _, _ -> },
     onSearchClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
-    showBackArrow: Boolean = true
+    showBackArrow: Boolean = true,
+    onSavedChanged: ((isSaved: Boolean, group: String?) -> Unit)? = null
 ) {
     // ── Get repository from Application ──────────────────────────────────
     val context = LocalContext.current
@@ -149,6 +152,24 @@ fun TimetableScreen(
     // Incremented to trigger a force-refresh
     var refreshTrigger by remember { mutableStateOf(0) }
 
+    // Tracks the pull-to-refresh indicator visibility.
+    // True while a user-initiated force-refresh is in-flight.
+    var isRefreshing by remember { mutableStateOf(false) }
+
+    // Shows a rate-limit message when the user tries to pull-refresh
+    // within 24 hours of the last one.
+    var showRefreshRateLimited by remember { mutableStateOf(false) }
+    var uiTapKey by remember { mutableStateOf(0) }
+    val uiRefresh = { uiTapKey++ }
+
+    // Auto-dismiss the rate-limit message after 5 seconds
+    LaunchedEffect(showRefreshRateLimited) {
+        if (showRefreshRateLimited) {
+            delay(5000)
+            showRefreshRateLimited = false
+        }
+    }
+
     val days = listOf("Mon", "Tue", "Wed", "Thu", "Fri")
     val coroutineScope = rememberCoroutineScope()
 
@@ -170,6 +191,16 @@ fun TimetableScreen(
         isSaved = repository.isCourseSaved(selectedCourse.identity)
     }
 
+    // Re-check saved state when the star is toggled (starring auto-saves).
+    // A small delay yields to the concurrent save coroutine from
+    // applyStarAndSave() in MainActivity so the DB write completes first.
+    LaunchedEffect(selectedCourse.identity, isStarred) {
+        if (selectedCourse.identity.isNotEmpty()) {
+            delay(100)
+            isSaved = repository.isCourseSaved(selectedCourse.identity)
+        }
+    }
+
     // Remember selected group so returning to this course restores it
     LaunchedEffect(selectedGroup) {
         if (selectedGroup != null) {
@@ -178,66 +209,41 @@ fun TimetableScreen(
         }
     }
 
-    // ── Background week scanner (serial, rate-limit-aware) ──────────
-    // After the first successful load, scan all remaining weeks in the
-    // background so empty ones disappear from the dropdown automatically.
-    //
-    // Rate-limit compliance: the API token bucket allows 5 req/10s.
-    // Inserting a 2.1s delay between requests keeps us at ~0.5 req/s,
-    // well within the limit and prevents cascading 429 failures that
-    // would permanently hide weeks from the dropdown.
-    //
-    // Progress reporting: scannedCount is updated inline for the
-    // LinearProgressIndicator; state updates (emptyWeeks/activeWeeks/
-    // failedWeeks) are batched and committed after the loop to avoid
-    // flooding the Compose recomposition scheduler with 30+ rapid updates.
-    LaunchedEffect(events.isNotEmpty(), selectedCourse.identity) {
-        if (!events.isNotEmpty() || scanningWeeks) return@LaunchedEffect
+    // ── Week classifier (cache-first, background-refresh) ──────────
+    // 1. Load previous classification from SharedPreferences (instant).
+    // 2. Fetch full year in background → persist new classification.
+    // This eliminates ALL waiting time for the dropdown filter.
+    LaunchedEffect(selectedCourse.identity) {
+        if (scanningWeeks) return@LaunchedEffect
         scanningWeeks = true
+
         val allWeeks = TimetableUtils.generateAcademicWeeks()
-        val alreadyKnown = emptyWeeks.toSet() +
-            setOf(currentMonday.format(DATE_FORMATTER))
-        val toScan = allWeeks.filter {
-            it.format(DATE_FORMATTER) !in alreadyKnown
-        }
-        totalToScan = toScan.size
-        scannedCount = 0
+        totalToScan = allWeeks.size
 
-        // Batch collectors — commit all results at once after the loop
-        val batchEmpty = mutableSetOf<String>()
-        val batchActive = mutableSetOf<String>()
-        val batchFailed = mutableSetOf<String>()
-
-        for (monday in toScan) {
-            // Respect the rate limiter: 2.1s → ~0.5 req/s, safely under 5 req/10s
-            delay(2100)
-            try {
-                val result = repository.loadTimetable(
-                    courseIdentity = selectedCourse.identity,
-                    timetableTypeId = selectedCourse.timetable_type_id,
-                    mondayDate = monday,
-                    forceRefresh = false,
-                    context = context,
-                    courseName = selectedCourse.name
-                )
-                val key = monday.format(DATE_FORMATTER)
-                if (result.events.isEmpty()) {
-                    batchEmpty.add(key)
-                } else {
-                    batchActive.add(key)
-                }
-            } catch (_: Exception) {
-                // Network error — track as failed so it's hidden from
-                // the dropdown without being permanently marked empty
-                batchFailed.add(monday.format(DATE_FORMATTER))
-            }
-            scannedCount++
+        // Step 1 — instant restore from cache (0 ms)
+        val cached = SyncPreferences.getActiveWeeks(context, selectedCourse.identity)
+        if (cached != null) {
+            val allKeys = allWeeks.map { it.format(DATE_FORMATTER) }.toSet()
+            activeWeeks = cached
+            emptyWeeks = allKeys - cached
+            scannedCount = allWeeks.size
         }
 
-        // Single batch commit — one recomposition instead of 30+
-        if (batchEmpty.isNotEmpty()) emptyWeeks = emptyWeeks + batchEmpty
-        if (batchActive.isNotEmpty()) activeWeeks = activeWeeks + batchActive
-        if (batchFailed.isNotEmpty()) failedWeeks = failedWeeks + batchFailed
+        // Step 2 — background refresh (2–5 s network)
+        try {
+            val response = TimetableApiService.DEFAULT.fetchFullYearTimetable(
+                categoryTypeId = selectedCourse.timetable_type_id,
+                identity = selectedCourse.identity
+            )
+            val (active, empty) = TimetableUtils.classifyWeeks(response.events, allWeeks)
+            activeWeeks = active
+            emptyWeeks = empty
+            scannedCount = allWeeks.size
+            SyncPreferences.saveActiveWeeks(context, selectedCourse.identity, active)
+        } catch (_: Exception) {
+            // Falls back to the cache from step 1 if available,
+            // or leaves unclassified (toggle won't filter) if not.
+        }
 
         scanningWeeks = false
     }
@@ -249,6 +255,9 @@ fun TimetableScreen(
     LaunchedEffect(currentMonday, selectedCourse.identity, refreshTrigger) {
         val mondayStr = currentMonday.format(DATE_FORMATTER)
         val forceRefresh = refreshTrigger > 0
+
+        // Activate the pull-to-refresh indicator for user-initiated refreshes
+        if (forceRefresh) isRefreshing = true
 
         // ── Phase 1: show cached data immediately (zero-wait UX) ──────
         if (!forceRefresh) {
@@ -313,7 +322,7 @@ fun TimetableScreen(
                         ?.let { try { LocalDate.parse(it) } catch (_: Exception) { null } }
                     val targetMonday = prefMonday
                         ?: run {
-                            val now = java.time.LocalDate.now()
+                            val now = com.example.timetablescraper.api.TimetableUtils.currentDublinDate()
                             val academicYear = if (now.monthValue >= 9) now.year else now.year - 1
                             java.time.LocalDate.of(academicYear, 10, 1)
                                 .with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
@@ -350,6 +359,18 @@ fun TimetableScreen(
         } finally {
             isLoading = false
             userPickedWeek = false
+            if (forceRefresh) {
+                isRefreshing = false
+                refreshTrigger = 0  // reset so subsequent week-navigations use cache
+            }
+        }
+    }
+
+    // ── Auto-dismiss "Updated from server" after 4 seconds ─────────
+    LaunchedEffect(cacheSource) {
+        if (cacheSource == CacheSource.NETWORK) {
+            delay(4000)
+            cacheSource = CacheSource.CACHE_FRESH
         }
     }
 
@@ -433,7 +454,7 @@ fun TimetableScreen(
                 },
                 actions = {
                     // ── Star (pin to home) ────────────────────────────
-                    IconButton(onClick = { onStarToggle(!isStarred) }) {
+                    IconButton(onClick = { onStarToggle(!isStarred, selectedGroup) }) {
                         Icon(
                             if (isStarred) Icons.Filled.Star else Icons.Filled.StarBorder,
                             contentDescription = if (isStarred) "Unpin from home" else "Pin to home",
@@ -456,6 +477,8 @@ fun TimetableScreen(
                             // Optimistic UI update — toggle instantly, DB write follows
                             val newSaved = !isSaved
                             isSaved = newSaved
+                            // Notify parent so save ↔ star stays in sync
+                            onSavedChanged?.invoke(newSaved, selectedGroup)
                             coroutineScope.launch {
                                 val group = selectedGroup
                                 val nameWithGroup = if (group != null) {
@@ -489,25 +512,45 @@ fun TimetableScreen(
             )
         }
     ) { padding ->
-        Column(
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                if (SyncPreferences.canPullRefresh(context)) {
+                    SyncPreferences.setLastPullRefreshTime(context, System.currentTimeMillis())
+                    refreshTrigger++
+                } else {
+                    showRefreshRateLimited = true
+                }
+                uiRefresh()
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // ── Cache-status indicator ───────────────────────────────────
+            Column(modifier = Modifier.fillMaxSize()) {
+                // ── Cache-status indicator ───────────────────────────────────
             if (cacheSource != null && events.isNotEmpty()) {
                 CacheStatusBar(source = cacheSource!!)
             }
 
-            // ── Week scanning progress (fixed height to avoid layout jump) ─
-            Box(modifier = Modifier.fillMaxWidth().height(4.dp)) {
-                if (scanningWeeks && totalToScan > 0) {
-                    LinearProgressIndicator(
-                        progress = { scannedCount.toFloat() / totalToScan },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            // ── Pull-to-refresh rate-limit message ────────────────────────
+            if (showRefreshRateLimited) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f)
+                ) {
+                    Text(
+                        text = "⏳ Timetable was refreshed in the last 24 hours. Try again later.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                     )
                 }
             }
+
+            // (The Box and LinearProgressIndicator for the scanning weeks have been deleted)
+            // You can leave a blank space here or just let the rest of your UI continue below.
 
             // ── Week picker (dropdown menu) ────────────────────────────
             val allAcademicWeeks = remember { TimetableUtils.generateAcademicWeeks() }
@@ -515,34 +558,24 @@ fun TimetableScreen(
             // Auto-detect first week and semester boundary from scan results.
             // Treats both emptyWeeks (confirmed empty) and unscanned weeks as "empty"
             // for gap detection — only activeWeeks count as having classes.
-            val autoFirstWeek = remember(activeWeeks) {
-                allAcademicWeeks.firstOrNull { it.format(DATE_FORMATTER) in activeWeeks }
-            }
-            val autoSem2Start = remember(activeWeeks, emptyWeeks, failedWeeks, scanningWeeks) {
-                // Only compute after scan finishes — partial data causes false gaps
-                if (scanningWeeks) return@remember null
-                val ordered = allAcademicWeeks.map { it.format(DATE_FORMATTER) }
-                var gapLen = 0
-                for (i in ordered.indices) {
-                    val key = ordered[i]
-                    // Only count a week as "gap" if it's confirmed empty (in emptyWeeks).
-                    // Weeks not yet scanned (in neither set) are ignored to avoid
-                    // false detection from partial scan data.
-                    if (key in emptyWeeks) {
-                        gapLen++
-                    } else if (key in activeWeeks) {
-                        if (gapLen >= 3) {
-                            // Found 3+ confirmed-empty weeks followed by an active week
-                            return@remember allAcademicWeeks[i]
-                        }
-                        gapLen = 0
-                    }
-                    // else: unknown week (not scanned yet) — ignore, don't break the gap
-                }
-                null
+            // 1. Sort the confirmed active weeks chronologically directly from the database data
+            val sortedActiveWeeks = remember(activeWeeks) {
+                allAcademicWeeks.filter { it.format(DATE_FORMATTER) in activeWeeks }.sorted()
             }
 
-            // Use manual config as override, fall back to auto-detection
+            val autoFirstWeek = sortedActiveWeeks.firstOrNull()
+
+            // 2. Auto-detect Semester 2 — works immediately, not gated on scanner finish.
+            //    Looks for a ≥21-day gap between confirmed active weeks after November.
+            val autoSem2Start = remember(sortedActiveWeeks) {
+                val gap = sortedActiveWeeks
+                    .filter { it.monthValue >= 11 }     // only consider from November onward
+                    .windowed(2)
+                    .firstOrNull { (a, b) -> java.time.temporal.ChronoUnit.DAYS.between(a, b) >= 21 }
+                gap?.get(1)  // the week AFTER the gap is Sem 2 start
+            }
+
+            // 3. Override configs and fixed fallbacks
             val manualFirst = remember {
                 SyncPreferences.getFirstWeekMonday(context)
                     ?.let { try { LocalDate.parse(it) } catch (_: Exception) { null } }
@@ -551,35 +584,51 @@ fun TimetableScreen(
                 SyncPreferences.getSem2StartMonday(context)
                     ?.let { try { LocalDate.parse(it) } catch (_: Exception) { null } }
             }
-            // Fallback when scan hasn't completed yet: use October for Sem1, late Jan for Sem2
+
+            // Fallback first week: first Monday of September.
+            // This matches the TU Dublin academic calendar start.  Empty weeks
+            // before the first active week are handled by the Settings toggle.
             val fallbackFirst = allAcademicWeeks.firstOrNull {
-                it.monthValue == 10 && it.dayOfMonth <= 7
+                it.monthValue == 9
             }
             val fallbackSem2 = allAcademicWeeks.firstOrNull {
-                it.monthValue == 1 && it.dayOfMonth >= 20
+                it.monthValue == 1 && it.dayOfMonth >= 20 // Late January
             }
-            val firstWeekDate = manualFirst ?: autoFirstWeek ?: fallbackFirst
+
+            // Semester start: always at least the fallback (September).
+            // autoFirstWeek is NOT used here — it only drives the initial
+            // navigation jump below, so the full calendar is always visible.
+            val firstWeekDate = manualFirst ?: fallbackFirst
             val sem2WeekDate = manualSem2 ?: autoSem2Start ?: fallbackSem2
 
             // Active semester: 0 = Sem 1, 1 = Sem 2 (restored from saved state)
             var activeSemester by remember { mutableStateOf(savedSemester) }
 
+            // 4. Visible weeks: ALL academic weeks within the semester
+            //    minus rate-limited (failedWeeks) entries.
+            //    Empty weeks are optionally hidden via Settings toggle.
             val visibleWeeks = remember(
-                allAcademicWeeks, emptyWeeks, failedWeeks, activeSemester,
-                firstWeekDate, sem2WeekDate
+                allAcademicWeeks, activeSemester, firstWeekDate,
+                sem2WeekDate, failedWeeks, emptyWeeks
             ) {
-                val semStart = if (activeSemester == 0) firstWeekDate else sem2WeekDate
-                val semEnd = if (activeSemester == 0) sem2WeekDate?.minusWeeks(1) else null
-                // Show all weeks within the semester, progressively hiding
-                // empty weeks (confirmed no events) and failed weeks
-                // (rate-limited / network error, need a retry).
-                allAcademicWeeks.filter { w ->
-                    val key = w.format(DATE_FORMATTER)
-                    (semStart == null || !w.isBefore(semStart)) &&
-                    (semEnd == null || !w.isAfter(semEnd)) &&
-                    key !in emptyWeeks &&
-                    key !in failedWeeks
+                val hideEmpty = SyncPreferences.shouldHideEmptyWeeks(context)
+                val candidates = if (activeSemester == 0) {
+                    // Semester 1: from first week up to (but not including) Sem 2
+                    allAcademicWeeks.filter { w ->
+                        !w.isBefore(firstWeekDate) &&
+                                (sem2WeekDate == null || w.isBefore(sem2WeekDate))
+                    }
+                } else {
+                    // Semester 2: from Sem 2 start onward
+                    allAcademicWeeks.filter { w ->
+                        sem2WeekDate != null && !w.isBefore(sem2WeekDate)
+                    }
                 }
+                var result = candidates.filter { it.format(DATE_FORMATTER) !in failedWeeks }
+                if (hideEmpty) {
+                    result = result.filter { it.format(DATE_FORMATTER) !in emptyWeeks }
+                }
+                result
             }
 
             // Always jump to the first visible week if currentMonday is not visible
@@ -587,20 +636,24 @@ fun TimetableScreen(
                 visibleWeeks.firstOrNull() ?: currentMonday
             else currentMonday
 
-            // For new courses (no saved state), jump to the first visible (non-empty) week.
-            // Re-fires whenever visibleWeeks updates (e.g. scan finishes populating activeWeeks)
-            // so the user always lands on Week 1 after the scan completes.
+            // For new courses (no saved state), jump to the first active week
+            // (autoFirstWeek), falling back to the first visible week if no
+            // active weeks are known yet.  Re-fires whenever visibleWeeks updates
+            // (e.g. scan finishes populating activeWeeks) so the user always lands
+            // on the first real week after the scan completes.
             LaunchedEffect(visibleWeeks) {
                 if (!hasSavedState && !userPickedWeek && visibleWeeks.isNotEmpty()) {
-                    currentMonday = visibleWeeks.first()
+                    currentMonday = if (autoFirstWeek != null && autoFirstWeek in visibleWeeks)
+                        autoFirstWeek else visibleWeeks.first()
                 }
             }
 
-            // When user manually switches semester tab, reset to that semester's first non-empty week
+            // When user manually switches semester tab, reset to that semester's first active week
             LaunchedEffect(activeSemester) {
                 if (visibleWeeks.isNotEmpty()) {
                     if (!hasSavedState || currentMonday !in visibleWeeks) {
-                        currentMonday = visibleWeeks.first()
+                        currentMonday = if (autoFirstWeek != null && autoFirstWeek in visibleWeeks)
+                            autoFirstWeek else visibleWeeks.first()
                     }
                 }
             }
@@ -874,9 +927,10 @@ fun TimetableScreen(
             }
         }
     }
+        }
     }
 }
-
+ 
 // ── Cache status bar / Offline warning ──────────────────────────────────────
 
 /**
@@ -947,7 +1001,7 @@ private fun EventsContent(
             contentPadding = PaddingValues(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            items(filteredEvents, key = { it.id }) { event ->
+            items(filteredEvents, key = { "${it.id}_${it.weekStart}_${it.start}_${it.moduleCode}_${it.group}" }) { event ->
                 TimetableEventCard(event = event)
             }
         }
@@ -979,6 +1033,7 @@ private fun DayTabItem(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
+            .minimumInteractiveComponentSize()
             .clip(RoundedCornerShape(12.dp))
             .background(bgColor)
             .clickable(onClick = onClick)

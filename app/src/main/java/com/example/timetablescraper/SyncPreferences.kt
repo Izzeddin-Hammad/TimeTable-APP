@@ -248,6 +248,75 @@ object SyncPreferences {
         }
     }
 
+    // ── Pull-to-refresh rate limit (24h cooldown) ───────────────────
+
+    private const val KEY_LAST_PULL_REFRESH = "last_pull_refresh"
+
+    /**
+     * Returns the epoch-millis timestamp of the last pull-to-refresh,
+     * or 0 if never performed.
+     */
+    fun getLastPullRefreshTime(context: Context): Long =
+        prefs(context).getLong(KEY_LAST_PULL_REFRESH, 0L)
+
+    /** Record that a pull-to-refresh just completed. */
+    fun setLastPullRefreshTime(context: Context, time: Long) {
+        prefs(context).edit().putLong(KEY_LAST_PULL_REFRESH, time).apply()
+    }
+
+    /**
+     * Returns true if a pull-to-refresh is allowed (≥ 24h since last one).
+     * The "Sync Now" button in Settings bypasses this check entirely.
+     */
+    fun canPullRefresh(context: Context): Boolean {
+        val last = getLastPullRefreshTime(context)
+        if (last == 0L) return true  // never refreshed → allowed
+        return (System.currentTimeMillis() - last) >= PULL_REFRESH_COOLDOWN_MS
+    }
+
+    private val PULL_REFRESH_COOLDOWN_MS = 24 * 60 * 60 * 1000L
+
+    // ── Empty weeks visibility toggle ───────────────────────────────
+
+    private const val KEY_HIDE_EMPTY_WEEKS = "hide_empty_weeks"
+
+    /** Whether the user wants to hide weeks with no events from the week dropdown. */
+    fun shouldHideEmptyWeeks(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_HIDE_EMPTY_WEEKS, true)
+
+    fun setHideEmptyWeeks(context: Context, hide: Boolean) {
+        prefs(context).edit().putBoolean(KEY_HIDE_EMPTY_WEEKS, hide).apply()
+    }
+
+    // ── Full-year week classification cache ─────────────────────────
+
+    private const val KEY_ACTIVE_WEEKS_PREFIX = "active_weeks_"
+
+    /**
+     * Load the set of active week keys (yyyy-MM-dd) previously classified
+     * for this course, or null if never classified.
+     *
+     * Empty weeks are derived: allAcademicWeeks - activeWeeks.
+     */
+    fun getActiveWeeks(context: Context, courseIdentity: String): Set<String>? {
+        val set = prefs(context).getStringSet(KEY_ACTIVE_WEEKS_PREFIX + courseIdentity, null)
+        return if (set != null && set.isNotEmpty()) set else null
+    }
+
+    /** Persist the active-week classification so next launch is instant. */
+    fun saveActiveWeeks(context: Context, courseIdentity: String, activeWeeks: Set<String>) {
+        prefs(context).edit()
+            .putStringSet(KEY_ACTIVE_WEEKS_PREFIX + courseIdentity, activeWeeks)
+            .apply()
+    }
+
+    /** Remove classification for a course (e.g. when cache is cleared). */
+    fun clearActiveWeeks(context: Context, courseIdentity: String) {
+        prefs(context).edit()
+            .remove(KEY_ACTIVE_WEEKS_PREFIX + courseIdentity)
+            .apply()
+    }
+
     // ── Week Cache Polling (lazy-loading) ───────────────────────────
 
     private const val KEY_CACHED_WEEK_PREFIX = "cached_week_"

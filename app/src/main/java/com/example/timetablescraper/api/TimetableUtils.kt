@@ -1,7 +1,9 @@
 package com.example.timetablescraper.api
 
+import android.util.Log
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
 
@@ -10,7 +12,23 @@ import java.time.temporal.TemporalAdjusters
  */
 object TimetableUtils {
 
+    private const val TAG = "TimetableUtils"
+
     private val DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+
+    /**
+     * Dublin timezone resolved eagerly with a safe fallback.
+     * If the IANA database is somehow incomplete, the system default is used
+     * and a warning is logged.  This prevents [ZoneId.of] from throwing
+     * [java.time.DateTimeException] on misconfigured runtimes.
+     */
+    @JvmStatic
+    val DUBLIN_ZONE: ZoneId = try {
+        ZoneId.of("Europe/Dublin")
+    } catch (e: Exception) {
+        Log.w(TAG, "Europe/Dublin timezone unavailable, falling back to system default", e)
+        ZoneId.systemDefault()
+    }
 
     /**
      * Convert an API event into a UI-friendly TimetableEvent.
@@ -71,7 +89,7 @@ object TimetableUtils {
         }
     }
 
-    fun getCurrentMonday(today: LocalDate = LocalDate.now()): LocalDate {
+    fun getCurrentMonday(today: LocalDate = LocalDate.now(DUBLIN_ZONE)): LocalDate {
         return today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
     }
 
@@ -87,7 +105,7 @@ object TimetableUtils {
         return "$startStr – $endStr"
     }
 
-    fun generateAcademicWeeks(today: LocalDate = LocalDate.now()): List<LocalDate> {
+    fun generateAcademicWeeks(today: LocalDate = LocalDate.now(DUBLIN_ZONE)): List<LocalDate> {
         val academicYearStart = if (today.monthValue >= 9) {
             LocalDate.of(today.year, 9, 1)
         } else {
@@ -125,6 +143,41 @@ object TimetableUtils {
                 val s = e.start.trim().removeSuffix("Z").substringBefore(".000")
                 "${s}|${e.title.trim()}|${e.lecturer.trim()}"
             }
+    }
+
+    /**
+     * Current date in the Dublin timezone with a safe fallback.
+     * Use this instead of [LocalDate.now] everywhere in the app to
+     * guarantee timezone-consistent week boundaries.
+     *
+     * Crash-proof: returns the system-local date if the Dublin zone
+     * cannot be resolved (should never happen on standard Android runtimes).
+     */
+    fun currentDublinDate(): LocalDate = LocalDate.now(DUBLIN_ZONE)
+
+    /**
+     * Classify academic weeks into active (has events) and empty (no events).
+     *
+     * @param events   All events for the course (e.g. from a full-year API fetch).
+     * @param allWeeks The full list of academic Mondays from [generateAcademicWeeks].
+     * @return Pair(activeKeys, emptyKeys) where each key is "yyyy-MM-dd".
+     */
+    fun classifyWeeks(
+        events: List<ApiEvent>,
+        allWeeks: List<LocalDate> = generateAcademicWeeks()
+    ): Pair<Set<String>, Set<String>> {
+        val activeKeys = events.mapNotNull { event ->
+            try {
+                LocalDate.parse(event.start.substring(0, 10))
+            } catch (_: Exception) { null }
+        }.mapNotNull { date ->
+            allWeeks.firstOrNull { monday ->
+                !date.isBefore(monday) && !date.isAfter(monday.plusDays(6))
+            }
+        }.map { it.format(DATE_FORMATTER) }.toSet()
+
+        val allKeys = allWeeks.map { it.format(DATE_FORMATTER) }.toSet()
+        return Pair(activeKeys, allKeys - activeKeys)
     }
 
     fun safeFormat(date: LocalDate, formatter: DateTimeFormatter): String {

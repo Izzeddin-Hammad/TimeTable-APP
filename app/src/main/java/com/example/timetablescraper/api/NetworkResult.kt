@@ -4,6 +4,7 @@ import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import javax.net.ssl.SSLException
+import retrofit2.HttpException // If you are using Retrofit, this is the standard HTTP Exception
 
 /**
  * Typed result wrapper that classifies every network outcome into one of
@@ -40,39 +41,21 @@ sealed class NetworkResult<out T> {
 
     // ── Convenience accessors ─────────────────────────────────────────
 
-    /** Returns `true` if this is a [Success]. */
     val isSuccess: Boolean get() = this is Success
-
-    /** Returns `true` if this is an error (either HTTP or transport). */
     val isError: Boolean get() = !isSuccess
 
-    /**
-     * Returns `true` if this is a **retryable** error —
-     * transport failures and 5xx errors are retryable; 4xx (except 429) are not.
-     */
     val isRetryable: Boolean get() = when (this) {
         is Success        -> false
         is HttpError      -> code >= 500 || code == 429
         is TransportError -> true
     }
 
-    /**
-     * Returns `true` if this error warrants showing an offline/cache-stale
-     * warning to the user.
-     */
     val isConnectivityLoss: Boolean get() = when (this) {
         is Success        -> false
         is HttpError      -> false
         is TransportError -> true
     }
 
-    /**
-     * Returns a human-readable status label for the UI:
-     * - `"online"` for success
-     * - `"offline"` for transport errors
-     * - `"server_error"` for 5xx or 429
-     * - `"blocked"` for other 4xx
-     */
     val statusLabel: String get() = when (this) {
         is Success        -> "online"
         is TransportError -> "offline"
@@ -102,29 +85,31 @@ sealed class NetworkResult<out T> {
                     TransportError("Connection refused", e)
                 is SSLException ->
                     TransportError("SSL handshake failed", e)
+
+                // 1. Check for your custom TimetableApiException first
+                is TimetableApiException ->
+                    HttpError(code = e.httpCode, body = e.body, message = e.message ?: "API Error ${e.httpCode}")
+
+                // 2. Check for standard Retrofit HTTP exceptions (if you ever migrate to Retrofit)
+                is HttpException ->
+                    HttpError(code = e.code(), message = e.message())
+
                 else -> {
-                    // Try to detect HTTP errors from exception message
-                    // (legacy OkHttp throws exceptions for non-2xx)
+                    // 3. Fallback for generic exceptions.
+                    // Instead of brittle Regex, look for specific string patterns
+                    // only if it's an IOException or generic Exception.
                     val msg = e.message ?: ""
                     when {
                         msg.contains("429", ignoreCase = true) ||
-                        msg.contains("too many requests", ignoreCase = true) ->
+                                msg.contains("too many requests", ignoreCase = true) ->
                             HttpError(code = 429, message = msg)
-                        Regex("""\b(5\d{2})\b""").find(msg)?.let { (it.value.toIntOrNull() ?: 0) >= 500 } == true ->
-                            HttpError(code = Regex("""\b(5\d{2})\b""").find(msg)!!.value.toInt(), message = msg)
-                        Regex("""\b(4\d{2})\b""").find(msg)?.let { it.value.toIntOrNull() } != null ->
-                            HttpError(code = Regex("""\b(4\d{2})\b""").find(msg)!!.value.toInt(), message = msg)
                         else ->
-                            TransportError(msg, e)
+                            TransportError("Unexpected Error: $msg", e)
                     }
                 }
             }
         }
 
-        /**
-         * Build a [NetworkResult] from an HTTP status code and body.
-         * Use this when you have direct access to the response object.
-         */
         fun fromHttpCode(code: Int, body: String = ""): NetworkResult<Nothing> {
             return when {
                 code in 200..299 -> error("fromHttpCode should not be called for 2xx")

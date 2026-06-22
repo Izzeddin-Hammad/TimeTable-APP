@@ -6,57 +6,95 @@ A prototype Android timetable app that fetches your TU Dublin university schedul
 
 ## Features
 
+### Timetable
 - **Direct API Integration** — Connects to the TU Dublin Scientia timetable API with Anonymous auth
 - **Course Search** — Search by course code or name with real-time debounced results; stale queries are discarded mid-flight
-- **Sync Notification System** — Background/sync completions post notifications with success/fail status and timestamp
+- **Full-Year Week Classifier** — Single API request classifies all 30 academic weeks as active or empty instantly (replaces the old 60-second serial scanner)
+- **Hide Empty Weeks** — Toggle in Settings to remove weeks with no classes from the dropdown (default: on)
+- **Smart Semester Detection** — Auto-detects Semester 1 & 2 boundaries by finding a ≥21-day gap between active weeks after November
+- **Week Dropdown** — Numbered weeks (W1, W2, …) with empty weeks optionally hidden
+- **Semester Tabs** — Wide Semester 1 / Semester 2 tabs for quick semester switching
+- **Subgroup Filtering** — Select specific class groups (A, B, G1, G2, etc.) via dropdown with ⭐ default group pinning; expand unlimited search results simultaneously to compare groups across courses
+- **Pull to Refresh** — Swipe down on the timetable to force a fresh network fetch (limited to once per 24 hours)
+- **Persistent View State** — Remembers your semester, week, day tab, and group per course across app restarts
+- **Offline Cache** — Room database caches timetables per week; view your schedule even without internet
+- **Stale-While-Revalidate** — Cache renders instantly (~5ms), background refresh updates silently
+
+### Pinning & Bookmarks
+- **Pin to Home** — Star a course to make it your home screen; opens instantly on launch. Only one course can be pinned at a time
+- **Star = Auto-Save** — Starring a course automatically bookmarks it. Unstarring does NOT unsave
+- **Bookmark Courses** — Save courses for quick access from Settings. Bookmarking auto-stars (with replacement confirmation)
+- **Home Button in Search** — A home icon appears in the search bar when a course is pinned, for one-tap navigation back
+
+### Sync & Cache
 - **Configurable Sync Strategy** — Three-mode pattern:
   - **Daily** — 24-hour cache TTL
   - **Weekly** — 7-day cache TTL
   - **Custom (days)** — User-defined day interval
-- **Settings Screen** — Access sync settings, academic week configuration, saved courses, cached data statistics
-- **Smart Semester Detection** — Auto-detects Semester 1 & 2 boundaries by scanning all academic weeks with rate-limit-aware serial scanning (2.1s delay between requests)
-- **Week Dropdown** — Numbered weeks (W1, W2, ...) with empty weeks permanently hidden
-- **Semester Tabs** — Wide Semester 1 / Semester 2 tabs for quick semester switching
-- **Subgroup Filtering** — Select specific class groups (A, B, G1, G2, etc.) via dropdown with ⭐ default group pinning; expand unlimited search results simultaneously to compare groups across courses
-- **Pin to Home** — Star a course to make it your home screen; opens instantly on launch
-- **Persistent View State** — Remembers your semester, week, day tab, and group per course across app restarts
-- **Offline Cache** — Room database caches timetables; view your schedule even without internet
-- **Request Minimization** — Singleton request debouncer deduplicates concurrent API calls to the same URL
-- **Client-Side Rate Limiting** — Token Bucket OkHttp interceptor (5 req/10s); returns synthetic 429 to trigger fail-safe fallback when exceeded
-- **Granular Cache Management** — Delete individual course caches from Settings without wiping everything; properly displays course names resolved from cache/saved courses
-- **Corrected Notification Icon** — Custom vector drawable for sync notifications replaces system icons that rendered as solid white squares on some devices
-- **Subgroup UI Improvements** — 48dp touch target for dropdown arrows; gold star tint (⭐) on pinned/default subgroups for clear visual feedback
-- **Week 1 Default** — New/uncached courses default to `visibleWeeks.first()` (the first non-empty week); eliminates the Week 4 regression at the root
-- **Empty Weeks Permanently Hidden** — Week dropdown only shows weeks not in `emptyWeeks` (confirmed by scanner); empty weeks progressively disappear as the scanner processes them
-- **Subgroup Expand Unlimited** — Removed artificial caps on subgroup expansion in search results; any number of courses can be expanded simultaneously to compare groups
-- **In-App Self-Updating** — Queries GitLab Releases API on launch; prompts with an update dialog when a newer version is detected; downloads APK via Android DownloadManager and launches the system package installer
+- **Background Sync** — WorkManager periodically refreshes cached timetables with strategy-aware scheduling
+- **Reactive Background Sync** — UI polls Room every 2 minutes; if WorkManager updated cache, the timetable refreshes automatically
+- **Granular Cache Management** — Delete individual course caches from Settings without wiping everything
+- **Sync Notification System** — Background sync completions post notifications with success/fail status and timestamp
+- **Client-Side Rate Limiting** — Token Bucket OkHttp interceptor (5 req/10s); returns synthetic 429 to trigger fail-safe fallback
+
+### Resilience & Safety
+- **Global Crash Handler** — Uncaught exceptions are persisted and recovered on next launch via a dedicated Fatal Error recovery screen
+- **Fatal Error Screen** — Shows "Something went wrong" with "Clear Cache & Restart" and "Try Again" buttons
+- **Coroutine Exception Handler** — Unhandled coroutine crashes are caught at the root scope and persisted for next-launch recovery
 - **Fail-Safe Fallback** — HTTP 429/500 and network errors fall back to stale cache with an "⚠️ Offline / Cached Mode" banner
-- **Background Sync** — WorkManager periodically refreshes cached timetables with configurable strategy-aware scheduling
-- **Bookmark Courses** — Save courses for quick access from Settings
-- **Search History** — Quick re-access to recent searches
-- **Material 3 UI** — Jetpack Compose with dynamic color support and smooth crossfade animations
-- **Defensive JSON Parsing** — All API response parsers wrapped in try/catch; malformed HTML/XML responses emit clean `TimetableApiException(502)` instead of leaking raw `JSONException` text to the UI
-- **Reactive Background Sync** — UI polls Room every 2 minutes; if WorkManager updated cache, the timetable refreshes automatically without manual pull-to-refresh
-- **Performance Optimized** — `derivedStateOf` on group filtering prevents recomposition churn; serial scanner with 2.1s delay respects rate limiter, preventing cascading 429 failures
-- **Unified Rate Limiter** — Both UI and WorkManager share a single `TimetableApiService.DEFAULT` singleton with one OkHttp client and one token-bucket rate limiter
-- **Instant Cache Load** — Stale-while-revalidate: cached data renders immediately (~5ms), then refreshes silently in background; `toUiEvent` date parsing offloaded to `Dispatchers.Default`
+- **Request Minimization** — Singleton request debouncer deduplicates concurrent API calls to the same URL
+- **Defensive JSON Parsing** — All API response parsers wrapped in try/catch; malformed HTML/XML responses emit clean `TimetableApiException(502)`
+
+### Performance
+- **Instant Week Classification Cache** — Full-year classification is cached in SharedPreferences per course; subsequent launches are instant
 - **Compose Stability** — `@Immutable` annotations on `TimetableEvent`, `SearchResult`, `ApiEvent`, `CacheResult` let Compose skip unchanged-item recomposition checks
 - **Room Performance** — Composite index on `[courseIdentity, weekStart]` + `fetchedAt` index for cache pruning; DB v7 schema
+- **Resource Efficiency** — `DateTimeFormatter` instances cached globally; date parsing offloaded to `Dispatchers.Default`
+
+### UI/UX
+- **Material 3 UI** — Jetpack Compose with dynamic color support and smooth crossfade animations
+- **In-App Self-Updating** — Queries GitLab Releases API on launch; prompts with an update dialog when a newer version is detected
+- **Search History** — Quick re-access to recent searches
+- **Subgroup UI** — 32dp expand arrow with "Tap to reveal course sub-groups" label; full subgroup path displayed in filter chips
+- **Auto-Dismiss Cache Status** — "🌐 Updated from server" banner auto-dismisses after 4 seconds
+
+## Privacy
+
+**Zero data collection.** See [PRIVACY.md](PRIVACY.md) for full details.
 
 ## How It Works
 
 ### Architecture
 ```
-UI (Jetpack Compose)
-  ├─ UpdateChecker → OkHttp → GitLab Releases API (self-updating)
-  ├─ UpdateManager → DownloadManager → FileProvider → System Installer
-  └─ TimetableRepository (strategy-aware TTL, request debouncer, fail-safe)
-       ├─ Room Database (per-week indexable key-value cache)
-       ├─ TimetableApiService → OkHttp → Scientia Publish API (TU Dublin)
-       │     ├─ RequestDebouncer (URL-keyed singleton deduplication)
-       │     └─ RateLimitInterceptor (Token Bucket; 5 req/10s)
-       └─ WorkManager (strategy-aware periodic sync)
-            └─ SyncNotificationManager (progress/completion notifications)
+┌─ Presentation Layer ─────────────────────────────────────────┐
+│  Jetpack Compose UI (single-Activity, all state hoisted)     │
+│  ┌─ SearchScreen ─┐  ┌─ TimetableScreen ─┐  ┌─ Settings ─┐  │
+│  │ (course search) │  │ (week view, pull  │  │ (sync,     │  │
+│  │                 │  │  star, bookmark,  │  │  cache,    │  │
+│  │                 │  │  semester tabs)   │  │  updates)  │  │
+│  └────────────────┘  └───────────────────┘  └────────────┘  │
+│         ▲                    ▲                     ▲         │
+│         │  onCourseSelected  │  onStarToggle       │         │
+│         ▼                    ▼                     ▼         │
+│  ┌─ MainActivity (MainApp) ────────────────────────────┐     │
+│  │  State machine: SEARCH / TIMETABLE / SETTINGS       │     │
+│  │  CoroutineScope + CoroutineExceptionHandler         │     │
+│  └─────────────────────────────────────────────────────┘     │
+├─ Safety Layer ───────────────────────────────────────────────┤
+│  CrashHandler (Thread.setDefaultUncaughtExceptionHandler)     │
+│    → persists crash → next launch shows FatalErrorScreen     │
+├─ Data Layer ─────────────────────────────────────────────────┤
+│  TimetableRepository (strategy-aware TTL, request debouncer) │
+│    ├─ Room Database (per-week indexed key-value cache)       │
+│    ├─ TimetableApiService → OkHttp → Scientia Publish API   │
+│    │     ├─ RequestDebouncer (URL-keyed deduplication)       │
+│    │     └─ RateLimitInterceptor (token bucket; 5 req/10s)  │
+│    └─ WorkManager (strategy-aware periodic sync)             │
+│         └─ SyncNotificationManager                           │
+├─ Update Layer ───────────────────────────────────────────────┤
+│  UpdateChecker → GitLab Releases API                         │
+│  UpdateManager → DownloadManager → FileProvider → Installer  │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ### Data Flow
@@ -65,13 +103,14 @@ UI (Jetpack Compose)
    - **Phase 1 (instant)**: Room cache read + `toUiEvent` parsing on `Dispatchers.Default` → UI renders in ~5ms
    - **Phase 2 (background)**: `TimetableRepository.loadTimetable()` — fresh cache short-circuits; stale cache triggers network fetch silently
 3. Events are parsed (pre-compiled regexes), deduplicated (O(n log n) single pass), and cached
-4. A rate-limit-aware serial background scanner (2.1s delay between requests) discovers which weeks have classes
-5. Semester boundaries are auto-detected from 3+ consecutive empty-week gaps in the schedule
-6. The week dropdown shows only non-empty weeks, numbered per semester; empty weeks are permanently hidden
-7. View state (semester, week, day, group) is persisted per course across app restarts
-8. WorkManager refreshes cached data per the user's chosen SyncStrategy
-9. A 2-minute background poll detects WorkManager cache updates and refreshes the UI automatically
-10. Sync completions post notifications with success/fail status and timestamp
+4. A single full-year API request classifies all 30 academic weeks as active or empty instantly
+5. Week classification is cached in SharedPreferences per course — subsequent launches are instant
+6. Semester boundaries auto-detected from a ≥21-day gap between active weeks after November
+7. The week dropdown shows only non-empty weeks when the "Hide empty weeks" toggle is on
+8. View state (semester, week, day, group) is persisted per course across app restarts
+9. WorkManager refreshes cached data per the user's chosen SyncStrategy
+10. A 2-minute background poll detects WorkManager cache updates and refreshes the UI automatically
+11. Pull-to-refresh fetches fresh data but is rate-limited to once every 24 hours
 
 ### Sync Strategies
 | Mode | TTL | Behavior |
@@ -82,13 +121,6 @@ UI (Jetpack Compose)
 
 Network calls are completely blocked if the app is opened while the cache is still fresh.
 
-### Request Minimization
-- **Singleton Request Debouncer** — Concurrent calls to the same `(course, week)` pair share one in-flight request. Others await the result.
-- **Per-Week Indexing** — Each `(courseIdentity, weekStart)` cached independently. Switching weeks triggers zero network if already fetched.
-- **Stale Query Guard** — SearchScreen captures query at effect start; if user types more during debounce, stale searches are discarded.
-- **No Automatic HTTP Retries** — OkHttp `retryOnConnectionFailure` disabled; backoff handled at app layer.
-- **Response Body Cleanup** — All OkHttp `Response` objects wrapped in `.use{}` to prevent socket leaks.
-
 ### Fail-Safe Behavior
 | Scenario | Behavior |
 |----------|----------|
@@ -96,6 +128,8 @@ Network calls are completely blocked if the app is opened while the cache is sti
 | HTTP 429 (Rate Limited) | Fall back to stale cache |
 | HTTP 500+ (Server Error) | Fall back to stale cache |
 | No cache available + network fail | Show error message with "Retry" button |
+| Crash (uncaught exception) | Persisted to prefs → next launch shows FatalErrorScreen |
+| Coroutine crash | Caught by root CoroutineExceptionHandler → persisted → FatalErrorScreen on next launch |
 | Coroutine cancelled (navigation) | `CancellationException` propagated, cache left intact |
 
 ### Fault Tolerance (Chaos Engineering)
@@ -108,6 +142,7 @@ Network calls are completely blocked if the app is opened while the cache is sti
 | HTTP 429 / 500+ | Repository `catch(Exception)` triggers stale Room cache fallback |
 | Firewall returns login page | `optJSONArray("Results") ?: JSONArray()` — graceful empty results, no crash |
 | Worker updates Room while user is viewing | 2-minute polling `LaunchedEffect` detects changes, refreshes UI automatically |
+| Timezone boundary (midnight) | All `LocalDate.now()` calls use `Europe/Dublin` with safe `ZoneId` fallback |
 
 ## Download
 

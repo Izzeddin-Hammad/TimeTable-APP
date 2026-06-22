@@ -58,6 +58,9 @@ class TimetableApplication : Application() {
         super.onCreate()
         instance = this
 
+        // ── Register the outermost crash safety net ─────────────────────
+        CrashHandler.register(this)
+
         // Create notification channel for sync progress/completion
         SyncNotificationManager.createChannel(this)
 

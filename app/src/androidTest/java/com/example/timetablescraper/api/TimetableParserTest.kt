@@ -22,7 +22,7 @@ class TimetableParserTest {
     // ── Happy path ──────────────────────────────────────────────────────
 
     @Test
-    fun `parses a complete event with all fields`() {
+    fun parses_a_complete_event_with_all_fields() {
         val json = JSONObject().apply {
             put("StartDateTime", "2025-10-07T10:00:00")
             put("EndDateTime", "2025-10-07T12:00:00")
@@ -55,7 +55,7 @@ class TimetableParserTest {
     // ── Missing keys (JSON schema mutation) ─────────────────────────────
 
     @Test
-    fun `missing StartDateTime defaults to empty string`() {
+    fun missing_StartDateTime_defaults_to_empty_string() {
         val json = JSONObject().apply {
             put("Name", "TU859/Title/Lec/Sem 1/A")
             put("Location", "Room")
@@ -66,7 +66,7 @@ class TimetableParserTest {
     }
 
     @Test
-    fun `missing Name field defaults to empty string`() {
+    fun missing_Name_field_defaults_to_empty_string() {
         val json = JSONObject().apply {
             put("Location", "Room")
         }
@@ -76,7 +76,7 @@ class TimetableParserTest {
     }
 
     @Test
-    fun `missing ExtraProperties still parses event`() {
+    fun missing_ExtraProperties_still_parses_event() {
         val json = JSONObject().apply {
             put("StartDateTime", "2025-10-07T10:00:00")
             put("EndDateTime", "2025-10-07T12:00:00")
@@ -92,7 +92,7 @@ class TimetableParserTest {
     }
 
     @Test
-    fun `missing Location defaults to empty string`() {
+    fun missing_Location_defaults_to_empty_string() {
         val json = JSONObject().apply {
             put("Name", "TU859/Title/Lec/Sem 1/A")
         }
@@ -103,7 +103,7 @@ class TimetableParserTest {
     // ── Null values (null injection) ────────────────────────────────────
 
     @Test
-    fun `null Location becomes empty string`() {
+    fun null_Location_becomes_empty_string() {
         val json = JSONObject().apply {
             put("Name", "TU859/Title/Lec/Sem 1/A")
             put("Location", JSONObject.NULL)
@@ -113,7 +113,7 @@ class TimetableParserTest {
     }
 
     @Test
-    fun `null Name becomes empty string`() {
+    fun null_Name_becomes_empty_string() {
         val json = JSONObject().apply {
             put("Name", JSONObject.NULL)
             put("Location", "Room")
@@ -126,7 +126,7 @@ class TimetableParserTest {
     // ── Malformed event name patterns ───────────────────────────────────
 
     @Test
-    fun `event name with no slashes`() {
+    fun event_name_with_no_slashes() {
         val json = JSONObject().apply {
             put("Name", "TU859Algorithms")
             put("Location", "Room")
@@ -137,7 +137,7 @@ class TimetableParserTest {
     }
 
     @Test
-    fun `event name with only one slash`() {
+    fun event_name_with_only_one_slash() {
         val json = JSONObject().apply {
             put("Name", "TU859/Algorithms")
             put("Location", "Room")
@@ -150,7 +150,7 @@ class TimetableParserTest {
     }
 
     @Test
-    fun `event name with type but no group`() {
+    fun event_name_with_type_but_no_group() {
         val json = JSONObject().apply {
             put("Name", "TU859/Algorithms/Lec/Sem 1")
             put("Location", "Room")
@@ -163,7 +163,7 @@ class TimetableParserTest {
     }
 
     @Test
-    fun `event name with type and group`() {
+    fun event_name_with_type_and_group() {
         val json = JSONObject().apply {
             put("Name", "TU859/Algorithms/Lec/Sem 1/A")
             put("Location", "A201")
@@ -173,7 +173,7 @@ class TimetableParserTest {
     }
 
     @Test
-    fun `event name with multi-segment name`() {
+    fun event_name_with_multi_segment_name() {
         val json = JSONObject().apply {
             put("Name", "TU859/Computer Science 101/Lab/Sem 2/G1")
             put("Location", "Lab A")
@@ -188,7 +188,7 @@ class TimetableParserTest {
     // ── ExtraProperties override ─────────────────────────────────────────
 
     @Test
-    fun `ExtraProperties Staff overrides lecturer`() {
+    fun ExtraProperties_Staff_overrides_lecturer() {
         val json = JSONObject().apply {
             put("Name", "TU859/Title/Lec/Sem 1")
             put("Location", "Room")
@@ -204,7 +204,7 @@ class TimetableParserTest {
     }
 
     @Test
-    fun `ExtraProperties Module overrides module code when empty`() {
+    fun ExtraProperties_Module_overrides_module_code_when_empty() {
         val json = JSONObject().apply {
             put("Name", "Subject/Lec/Sem 1/A")
             put("Location", "Room")
@@ -220,7 +220,7 @@ class TimetableParserTest {
     }
 
     @Test
-    fun `ExtraProperties Class Group normalises compound groups`() {
+    fun ExtraProperties_Class_Group_normalises_compound_groups() {
         val json = JSONObject().apply {
             put("Name", "TU859/Title/Lec/Sem 1")
             put("Location", "Room")
@@ -238,7 +238,7 @@ class TimetableParserTest {
     // ── Room location cleanup ───────────────────────────────────────────
 
     @Test
-    fun `Location brackets are stripped`() {
+    fun Location_brackets_are_stripped() {
         val json = JSONObject().apply {
             put("Name", "TU859/Title/Lec/Sem 1/A")
             put("Location", "A201 (123)")
@@ -248,7 +248,7 @@ class TimetableParserTest {
     }
 
     @Test
-    fun `Location without brackets stays unchanged`() {
+    fun Location_without_brackets_stays_unchanged() {
         val json = JSONObject().apply {
             put("Name", "TU859/Title/Lec/Sem 1/A")
             put("Location", "Main Hall")
@@ -258,7 +258,7 @@ class TimetableParserTest {
     }
 
     @Test
-    fun `Location with only closing bracket number`() {
+    fun Location_with_only_closing_bracket_number() {
         val json = JSONObject().apply {
             put("Name", "TU859/Title/Lec/Sem 1/A")
             put("Location", "Room B (42)")

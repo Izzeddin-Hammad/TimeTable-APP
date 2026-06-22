@@ -22,12 +22,12 @@ class SyncPreferencesTest {
     }
 
     @Test
-    fun `default auto sync is true`() {
+    fun default_auto_sync_is_true() {
         assertTrue(SyncPreferences.isAutoSyncEnabled(context))
     }
 
     @Test
-    fun `set and get auto sync`() {
+    fun set_and_get_auto_sync() {
         SyncPreferences.setAutoSyncEnabled(context, false)
         assertFalse(SyncPreferences.isAutoSyncEnabled(context))
 
@@ -36,12 +36,12 @@ class SyncPreferencesTest {
     }
 
     @Test
-    fun `default sync interval is 6 hours`() {
+    fun default_sync_interval_is_6_hours() {
         assertEquals(6, SyncPreferences.getSyncIntervalHours(context))
     }
 
     @Test
-    fun `set and get sync interval`() {
+    fun set_and_get_sync_interval() {
         SyncPreferences.setSyncIntervalHours(context, 12)
         assertEquals(12, SyncPreferences.getSyncIntervalHours(context))
 
@@ -50,19 +50,19 @@ class SyncPreferencesTest {
     }
 
     @Test
-    fun `default last manual sync is 0`() {
+    fun default_last_manual_sync_is_0() {
         assertEquals(0L, SyncPreferences.getLastManualSync(context))
     }
 
     @Test
-    fun `set and get last manual sync`() {
+    fun set_and_get_last_manual_sync() {
         val timestamp = System.currentTimeMillis()
         SyncPreferences.setLastManualSync(context, timestamp)
         assertEquals(timestamp, SyncPreferences.getLastManualSync(context))
     }
 
     @Test
-    fun `values persist across multiple accesses`() {
+    fun values_persist_across_multiple_accesses() {
         SyncPreferences.setAutoSyncEnabled(context, false)
         SyncPreferences.setSyncIntervalHours(context, 24)
         val ts = 1234567890L

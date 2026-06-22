@@ -44,7 +44,7 @@ class TimetableRepositoryTest {
     // ═══════════════════════════════════════════════════════════════════
 
     @Test
-    fun `returns cached data when fresh`() = runBlocking {
+    fun returns_cached_data_when_fresh() = runBlocking {
         // Pre-populate fresh cache
         val dao = database.timetableDao()
         val now = System.currentTimeMillis()
@@ -68,7 +68,7 @@ class TimetableRepositoryTest {
     }
 
     @Test
-    fun `cache hit includes correct module code`() = runBlocking {
+    fun cache_hit_includes_correct_module_code() = runBlocking {
         val dao = database.timetableDao()
         val now = System.currentTimeMillis()
         dao.insertAll(listOf(
@@ -89,7 +89,7 @@ class TimetableRepositoryTest {
     // ═══════════════════════════════════════════════════════════════════
 
     @Test
-    fun `force refresh bypasses cache and hits network`() = runBlocking {
+    fun force_refresh_bypasses_cache_and_hits_network() = runBlocking {
         // Pre-populate stale cache (older than the 24h default strategy TTL)
         val dao = database.timetableDao()
         val ttl = repository.currentTtlMillis
@@ -120,7 +120,7 @@ class TimetableRepositoryTest {
     // ═══════════════════════════════════════════════════════════════════
 
     @Test
-    fun `network failure falls back to stale cache`() = runBlocking {
+    fun network_failure_falls_back_to_stale_cache() = runBlocking {
         val dao = database.timetableDao()
         val ttl = repository.currentTtlMillis
         val oldTime = System.currentTimeMillis() - ttl - 10000
@@ -142,7 +142,7 @@ class TimetableRepositoryTest {
     }
 
     @Test
-    fun `network failure with no cache throws exception`() = runBlocking {
+    fun network_failure_with_no_cache_throws_exception() = runBlocking {
         try {
             repository.loadTimetable(testIdentity, testTypeId, testMonday)
             fail("Expected exception when no cache and network fails")
@@ -160,7 +160,7 @@ class TimetableRepositoryTest {
     // ═══════════════════════════════════════════════════════════════════
 
     @Test
-    fun `save and retrieve saved courses`() = runBlocking {
+    fun save_and_retrieve_saved_courses() = runBlocking {
         val course = SearchResult(
             name = "TU859/CS", programme_code = "TU859",
             identity = "id-859", type = "Programme",
@@ -175,7 +175,7 @@ class TimetableRepositoryTest {
     }
 
     @Test
-    fun `toggleSavedCourse toggles correctly`() = runBlocking {
+    fun toggleSavedCourse_toggles_correctly() = runBlocking {
         val course = SearchResult(
             name = "TU858/EE", programme_code = "TU858",
             identity = "id-858", type = "Programme",
@@ -194,7 +194,7 @@ class TimetableRepositoryTest {
     }
 
     @Test
-    fun `removeCourse deletes saved course`() = runBlocking {
+    fun removeCourse_deletes_saved_course() = runBlocking {
         val course = SearchResult(
             name = "TU860/Bio", programme_code = "TU860",
             identity = "id-860", type = "Programme",
@@ -208,7 +208,7 @@ class TimetableRepositoryTest {
     }
 
     @Test
-    fun `getSavedCourses returns empty when none saved`() = runBlocking {
+    fun getSavedCourses_returns_empty_when_none_saved() = runBlocking {
         val saved = repository.getSavedCourses()
         assertTrue(saved.isEmpty())
     }
@@ -218,7 +218,7 @@ class TimetableRepositoryTest {
     // ═══════════════════════════════════════════════════════════════════
 
     @Test
-    fun `record and retrieve search history`() = runBlocking {
+    fun record_and_retrieve_search_history() = runBlocking {
         repository.recordSearch("TU859")
         repository.recordSearch("TU858")
 
@@ -230,7 +230,7 @@ class TimetableRepositoryTest {
     }
 
     @Test
-    fun `recordSearch ignores blank queries`() = runBlocking {
+    fun recordSearch_ignores_blank_queries() = runBlocking {
         repository.recordSearch("")
         repository.recordSearch("   ")
 
@@ -239,7 +239,7 @@ class TimetableRepositoryTest {
     }
 
     @Test
-    fun `recordSearch deduplicates by query`() = runBlocking {
+    fun recordSearch_deduplicates_by_query() = runBlocking {
         repository.recordSearch("TU859")
         Thread.sleep(10) // ensure different timestamp
         repository.recordSearch("TU859")
@@ -250,7 +250,7 @@ class TimetableRepositoryTest {
     }
 
     @Test
-    fun `clearSearchHistory removes all`() = runBlocking {
+    fun clearSearchHistory_removes_all() = runBlocking {
         repository.recordSearch("TU859")
         repository.recordSearch("TU858")
         assertEquals(2, repository.getRecentSearches().size)
@@ -264,7 +264,7 @@ class TimetableRepositoryTest {
     // ═══════════════════════════════════════════════════════════════════
 
     @Test
-    fun `clearAll removes cached events`() = runBlocking {
+    fun clearAll_removes_cached_events() = runBlocking {
         val dao = database.timetableDao()
         val now = System.currentTimeMillis()
         dao.insertAll(listOf(
@@ -286,7 +286,7 @@ class TimetableRepositoryTest {
     // ═══════════════════════════════════════════════════════════════════
 
     @Test
-    fun `cache returns data for correct course only`() = runBlocking {
+    fun cache_returns_data_for_correct_course_only() = runBlocking {
         val dao = database.timetableDao()
         val now = System.currentTimeMillis()
         dao.insertAll(listOf(

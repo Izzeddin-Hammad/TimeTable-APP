@@ -32,6 +32,8 @@ import com.example.timetablescraper.TimetableApplication
 import com.example.timetablescraper.api.SearchResult
 import com.example.timetablescraper.api.SyncStrategy
 import com.example.timetablescraper.api.cache.SavedCourseEntity
+import com.example.timetablescraper.update.UpdateChecker
+import com.example.timetablescraper.update.UpdateManager
 import com.example.timetablescraper.worker.TimetableSyncWorker
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -70,6 +72,11 @@ fun SettingsScreen(
     var cachedCourseNames by remember { mutableStateOf<List<com.example.timetablescraper.api.cache.TimetableDao.CourseNamePair>>(emptyList()) }
     var firstWeekExpanded by remember { mutableStateOf(false) }
     var sem2WeekExpanded by remember { mutableStateOf(false) }
+    var uiTapKey by remember { mutableStateOf(0) }
+    val uiRefresh = { uiTapKey++ }
+    var updateCheckResult by remember { mutableStateOf<UpdateChecker.UpdateResult?>(null) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    var isCheckingUpdate by remember { mutableStateOf(false) }
 
     /** Refresh the per-course cache list from the database. */
     fun refreshCachedCourses() {
@@ -440,6 +447,39 @@ fun SettingsScreen(
                             }
                         }
                     }
+
+                    // ── Hide empty weeks toggle ────────────────────────
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                    var hideEmptyWeeks by remember {
+                        mutableStateOf(SyncPreferences.shouldHideEmptyWeeks(context))
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Hide empty weeks",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (hideEmptyWeeks) MaterialTheme.colorScheme.onSurface
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                "Weeks with no classes are removed from the week dropdown.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (hideEmptyWeeks) MaterialTheme.colorScheme.onSurfaceVariant
+                                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                        Switch(
+                            checked = hideEmptyWeeks,
+                            onCheckedChange = { checked ->
+                                hideEmptyWeeks = checked
+                                SyncPreferences.setHideEmptyWeeks(context, checked)
+                            }
+                        )
+                    }
                 }
             }
 
@@ -537,6 +577,7 @@ fun SettingsScreen(
                                     onClick = {
                                         coroutineScope.launch {
                                             app.repository.clearCacheForCourse(id)
+                                            SyncPreferences.clearActiveWeeks(context, id)
                                             // Refresh stats and list
                                             val dao = app.database.timetableDao()
                                             cacheEventCount = dao.count()
@@ -667,6 +708,54 @@ fun SettingsScreen(
                 }
             }
 
+            // ── Check for updates ───────────────────────────────────────
+            Card {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Check for updates",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                if (isCheckingUpdate) "Checking…"
+                                else "Current version: ${com.example.timetablescraper.BuildConfig.VERSION_NAME}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                isCheckingUpdate = true
+                                coroutineScope.launch {
+                                    val result = UpdateChecker.checkForUpdate()
+                                    updateCheckResult = result
+                                    isCheckingUpdate = false
+                                    if (result.updateAvailable && result.downloadUrl != null) {
+                                        showUpdateDialog = true
+                                    }
+                                }
+                            },
+                            enabled = !isCheckingUpdate
+                        ) {
+                            if (isCheckingUpdate) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(Modifier.width(6.dp))
+                            }
+                            Text(if (isCheckingUpdate) "Checking" else "Check")
+                        }
+                    }
+                }
+            }
+
             // ── Help text ──────────────────────────────────────────────
             Text(
                 "Cached timetables let you view your schedule even when offline. " +
@@ -683,7 +772,7 @@ fun SettingsScreen(
             onDismissRequest = { showClearConfirm = false },
             title = { Text("Clear all cached data?") },
             text = {
-                Text("This will delete all saved timetables. You'll need an internet connection to view them again.")
+                Text("This will delete all cached timetable data and refresh the per-course list. Your saved/bookmarked courses will not be affected.")
             },
             confirmButton = {
                 TextButton(
@@ -695,6 +784,10 @@ fun SettingsScreen(
                             cacheWeeksCount = 0
                             cacheCoursesCount = 0
                             newestCacheTime = null
+                            // Refresh the per-course cache list immediately
+                            val dao = app.database.timetableDao()
+                            cachedCourseIds = dao.getDistinctCourseIdentities()
+                            cachedCourseNames = dao.getDistinctCourseNames()
                         }
                     },
                     colors = ButtonDefaults.textButtonColors(
@@ -707,6 +800,41 @@ fun SettingsScreen(
             dismissButton = {
                 TextButton(onClick = { showClearConfirm = false }) {
                     Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // ── Update available dialog ──────────────────────────────────────────
+    if (showUpdateDialog && updateCheckResult != null) {
+        val remoteVersion = updateCheckResult!!.remoteVersion ?: "latest"
+        AlertDialog(
+            onDismissRequest = { showUpdateDialog = false },
+            title = { Text("Update Available") },
+            text = {
+                Text(
+                    "A new version of TimeTable ($remoteVersion) is available. " +
+                    "Would you like to download and install it now?"
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showUpdateDialog = false
+                        val downloadUrl = updateCheckResult?.downloadUrl
+                        if (downloadUrl != null) {
+                            coroutineScope.launch {
+                                UpdateManager.startDownload(context, downloadUrl)
+                            }
+                        }
+                    }
+                ) {
+                    Text("Update Now")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUpdateDialog = false }) {
+                    Text("Later")
                 }
             }
         )

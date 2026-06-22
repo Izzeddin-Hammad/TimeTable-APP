@@ -31,7 +31,7 @@ class TimetableDaoTest {
     // ── Event insert & query ───────────────────────────────────────────
 
     @Test
-    fun `insert and query events`() = runBlocking {
+    fun insert_and_query_events() = runBlocking {
         val now = System.currentTimeMillis()
         val events = listOf(
             CachedEventEntity(
@@ -56,13 +56,13 @@ class TimetableDaoTest {
     }
 
     @Test
-    fun `query returns empty for non-existent course`() = runBlocking {
+    fun query_returns_empty_for_non_existent_course() = runBlocking {
         val result = dao.getEvents("no-course", "2025-10-06")
         assertTrue(result.isEmpty())
     }
 
     @Test
-    fun `query returns empty for non-existent week`() = runBlocking {
+    fun query_returns_empty_for_non_existent_week() = runBlocking {
         val events = listOf(
             CachedEventEntity(
                 courseIdentity = "course-a", weekStart = "2025-10-06",
@@ -78,7 +78,7 @@ class TimetableDaoTest {
     }
 
     @Test
-    fun `events ordered by start time`() = runBlocking {
+    fun events_ordered_by_start_time() = runBlocking {
         val now = System.currentTimeMillis()
         val events = listOf(
             CachedEventEntity(
@@ -102,7 +102,7 @@ class TimetableDaoTest {
     }
 
     @Test
-    fun `insert replaces existing events`() = runBlocking {
+    fun insert_replaces_existing_events() = runBlocking {
         val now = System.currentTimeMillis()
         val first = listOf(
             CachedEventEntity(
@@ -132,7 +132,7 @@ class TimetableDaoTest {
     // ── deleteForWeek ──────────────────────────────────────────────────
 
     @Test
-    fun `deleteForWeek removes only matching course and week`() = runBlocking {
+    fun deleteForWeek_removes_only_matching_course_and_week() = runBlocking {
         val now = System.currentTimeMillis()
         // Insert for course-a, week-1
         dao.insertAll(listOf(
@@ -158,7 +158,7 @@ class TimetableDaoTest {
     }
 
     @Test
-    fun `deleteForWeek does not affect other courses`() = runBlocking {
+    fun deleteForWeek_does_not_affect_other_courses() = runBlocking {
         val now = System.currentTimeMillis()
         dao.insertAll(listOf(
             CachedEventEntity(
@@ -184,27 +184,27 @@ class TimetableDaoTest {
     // ── Statistics ─────────────────────────────────────────────────────
 
     @Test
-    fun `count returns total events`() = runBlocking {
+    fun count_returns_total_events() = runBlocking {
         val now = System.currentTimeMillis()
         dao.insertAll(listOf(
-            CachedEventEntity("course-a", "2025-10-06", now, "M1", "T1", "Lec", "L", "R", "", ""),
-            CachedEventEntity("course-a", "2025-10-06", now, "M2", "T2", "Lab", "L", "R", "", ""),
-            CachedEventEntity("course-b", "2025-10-06", now, "M3", "T3", "Lec", "L", "R", "", "")
+            CachedEventEntity(0L, "course-a", "2025-10-06", now, "M1", "T1", "Lec", "L", "R", "", ""),
+            CachedEventEntity(0L, "course-a", "2025-10-06", now, "M2", "T2", "Lab", "L", "R", "", ""),
+            CachedEventEntity(0L, "course-b", "2025-10-06", now, "M3", "T3", "Lec", "L", "R", "", "")
         ))
         assertEquals(3, dao.count())
     }
 
     @Test
-    fun `countDistinctWeeks returns correct distinct weeks`() = runBlocking {
+    fun countDistinctWeeks_returns_correct_distinct_weeks() = runBlocking {
         val now = System.currentTimeMillis()
         dao.insertAll(listOf(
             // course-a, week1
-            CachedEventEntity("course-a", "2025-10-06", now, "M1", "T1", "Lec", "L", "R", "", ""),
-            CachedEventEntity("course-a", "2025-10-06", now, "M2", "T2", "Lab", "L", "R", "", ""),
+            CachedEventEntity(0L, "course-a", "2025-10-06", now, "M1", "T1", "Lec", "L", "R", "", ""),
+            CachedEventEntity(0L, "course-a", "2025-10-06", now, "M2", "T2", "Lab", "L", "R", "", ""),
             // course-a, week2
-            CachedEventEntity("course-a", "2025-10-13", now, "M3", "T3", "Lec", "L", "R", "", ""),
+            CachedEventEntity(0L, "course-a", "2025-10-13", now, "M3", "T3", "Lec", "L", "R", "", ""),
             // course-b, week1
-            CachedEventEntity("course-b", "2025-10-06", now, "M4", "T4", "Lec", "L", "R", "", "")
+            CachedEventEntity(0L, "course-b", "2025-10-06", now, "M4", "T4", "Lec", "L", "R", "", "")
         ))
         // Distinct (weekStart || courseIdentity) combos:
         // 2025-10-06|course-a, 2025-10-13|course-a, 2025-10-06|course-b = 3
@@ -212,68 +212,68 @@ class TimetableDaoTest {
     }
 
     @Test
-    fun `getDistinctCourseIdentities returns all cached courses`() = runBlocking {
+    fun getDistinctCourseIdentities_returns_all_cached_courses() = runBlocking {
         val now = System.currentTimeMillis()
         dao.insertAll(listOf(
-            CachedEventEntity("course-a", "2025-10-06", now, "M1", "T1", "Lec", "L", "R", "", ""),
-            CachedEventEntity("course-b", "2025-10-06", now, "M2", "T2", "Lab", "L", "R", "", ""),
-            CachedEventEntity("course-a", "2025-10-13", now, "M3", "T3", "Lec", "L", "R", "", "")
+            CachedEventEntity(0L, "course-a", "2025-10-06", now, "M1", "T1", "Lec", "L", "R", "", ""),
+            CachedEventEntity(0L, "course-b", "2025-10-06", now, "M2", "T2", "Lab", "L", "R", "", ""),
+            CachedEventEntity(0L, "course-a", "2025-10-13", now, "M3", "T3", "Lec", "L", "R", "", "")
         ))
         val identities = dao.getDistinctCourseIdentities()
         assertEquals(setOf("course-a", "course-b"), identities.toSet())
     }
 
     @Test
-    fun `getNewestFetchedAt returns max timestamp`() = runBlocking {
+    fun getNewestFetchedAt_returns_max_timestamp() = runBlocking {
         val t1 = 1000L
         val t2 = 2000L
         val t3 = 3000L
         dao.insertAll(listOf(
-            CachedEventEntity("course-a", "2025-10-06", t1, "M1", "T1", "Lec", "L", "R", "", ""),
-            CachedEventEntity("course-b", "2025-10-06", t3, "M2", "T2", "Lab", "L", "R", "", ""),
-            CachedEventEntity("course-a", "2025-10-13", t2, "M3", "T3", "Lec", "L", "R", "", "")
+            CachedEventEntity(0L, "course-a", "2025-10-06", t1, "M1", "T1", "Lec", "L", "R", "", ""),
+            CachedEventEntity(0L, "course-b", "2025-10-06", t3, "M2", "T2", "Lab", "L", "R", "", ""),
+            CachedEventEntity(0L, "course-a", "2025-10-13", t2, "M3", "T3", "Lec", "L", "R", "", "")
         ))
         assertEquals(t3, dao.getNewestFetchedAt())
     }
 
     @Test
-    fun `getNewestFetchedAt returns null when no events`() = runBlocking {
+    fun getNewestFetchedAt_returns_null_when_no_events() = runBlocking {
         assertNull(dao.getNewestFetchedAt())
     }
 
     @Test
-    fun `getOldestFetchedAt returns min timestamp`() = runBlocking {
+    fun getOldestFetchedAt_returns_min_timestamp() = runBlocking {
         val t1 = 1000L
         val t2 = 2000L
         dao.insertAll(listOf(
-            CachedEventEntity("course-a", "2025-10-06", t2, "M1", "T1", "Lec", "L", "R", "", ""),
-            CachedEventEntity("course-b", "2025-10-06", t1, "M2", "T2", "Lab", "L", "R", "", "")
+            CachedEventEntity(0L, "course-a", "2025-10-06", t2, "M1", "T1", "Lec", "L", "R", "", ""),
+            CachedEventEntity(0L, "course-b", "2025-10-06", t1, "M2", "T2", "Lab", "L", "R", "", "")
         ))
         assertEquals(t1, dao.getOldestFetchedAt())
     }
 
     @Test
-    fun `getLastFetchedAt returns max for specific course week`() = runBlocking {
+    fun getLastFetchedAt_returns_max_for_specific_course_week() = runBlocking {
         dao.insertAll(listOf(
-            CachedEventEntity("course-a", "2025-10-06", 1000L, "M1", "T1", "Lec", "L", "R", "", ""),
-            CachedEventEntity("course-a", "2025-10-06", 2000L, "M2", "T2", "Lab", "L", "R", "", "")
+            CachedEventEntity(0L, "course-a", "2025-10-06", 1000L, "M1", "T1", "Lec", "L", "R", "", ""),
+            CachedEventEntity(0L, "course-a", "2025-10-06", 2000L, "M2", "T2", "Lab", "L", "R", "", "")
         ))
         assertEquals(2000L, dao.getLastFetchedAt("course-a", "2025-10-06"))
     }
 
     @Test
-    fun `getLastFetchedAt returns null for non-existent`() = runBlocking {
+    fun getLastFetchedAt_returns_null_for_non_existent() = runBlocking {
         assertNull(dao.getLastFetchedAt("no", "2025-10-06"))
     }
 
     // ── pruneOlderThan ─────────────────────────────────────────────────
 
     @Test
-    fun `pruneOlderThan removes old events`() = runBlocking {
+    fun pruneOlderThan_removes_old_events() = runBlocking {
         val now = System.currentTimeMillis()
         dao.insertAll(listOf(
-            CachedEventEntity("course-a", "2025-10-06", now - 100000, "M1", "T1", "Lec", "L", "R", "", ""),
-            CachedEventEntity("course-b", "2025-10-06", now, "M2", "T2", "Lab", "L", "R", "", "")
+            CachedEventEntity(0L, "course-a", "2025-10-06", now - 100000, "M1", "T1", "Lec", "L", "R", "", ""),
+            CachedEventEntity(0L, "course-b", "2025-10-06", now, "M2", "T2", "Lab", "L", "R", "", "")
         ))
         dao.pruneOlderThan(now - 50000)
         assertEquals(1, dao.count())
@@ -282,10 +282,10 @@ class TimetableDaoTest {
     }
 
     @Test
-    fun `pruneOlderThan removes nothing when all are new`() = runBlocking {
+    fun pruneOlderThan_removes_nothing_when_all_are_new() = runBlocking {
         val now = System.currentTimeMillis()
         dao.insertAll(listOf(
-            CachedEventEntity("course-a", "2025-10-06", now, "M1", "T1", "Lec", "L", "R", "", "")
+            CachedEventEntity(0L, "course-a", "2025-10-06", now, "M1", "T1", "Lec", "L", "R", "", "")
         ))
         dao.pruneOlderThan(0)
         assertEquals(1, dao.count())
@@ -294,7 +294,7 @@ class TimetableDaoTest {
     // ── Saved courses ──────────────────────────────────────────────────
 
     @Test
-    fun `save and query saved courses`() = runBlocking {
+    fun save_and_query_saved_courses() = runBlocking {
         dao.saveCourse(SavedCourseEntity("course-a", "TU859/CS", "TU859", "type-id", 1000L))
         dao.saveCourse(SavedCourseEntity("course-b", "TU858/EE", "TU858", "type-id", 2000L))
 
@@ -306,14 +306,14 @@ class TimetableDaoTest {
     }
 
     @Test
-    fun `isCourseSaved returns true for saved course`() = runBlocking {
+    fun isCourseSaved_returns_true_for_saved_course() = runBlocking {
         dao.saveCourse(SavedCourseEntity("course-a", "TU859/CS", "TU859", "type-id", 1000L))
         assertTrue(dao.isCourseSaved("course-a"))
         assertFalse(dao.isCourseSaved("course-x"))
     }
 
     @Test
-    fun `removeCourse deletes saved course`() = runBlocking {
+    fun removeCourse_deletes_saved_course() = runBlocking {
         dao.saveCourse(SavedCourseEntity("course-a", "TU859/CS", "TU859", "type-id", 1000L))
         assertTrue(dao.isCourseSaved("course-a"))
 
@@ -323,7 +323,7 @@ class TimetableDaoTest {
     }
 
     @Test
-    fun `save course replaces existing`() = runBlocking {
+    fun save_course_replaces_existing() = runBlocking {
         dao.saveCourse(SavedCourseEntity("course-a", "TU859/CS", "TU859", "type-id", 1000L))
         dao.saveCourse(SavedCourseEntity("course-a", "TU859/CS Updated", "TU859", "type-id", 2000L))
 
@@ -335,7 +335,7 @@ class TimetableDaoTest {
     // ── Search history ─────────────────────────────────────────────────
 
     @Test
-    fun `record and query search history`() = runBlocking {
+    fun record_and_query_search_history() = runBlocking {
         dao.recordSearch(SearchHistoryEntity("TU859", 1000L))
         dao.recordSearch(SearchHistoryEntity("TU858", 2000L))
 
@@ -347,7 +347,7 @@ class TimetableDaoTest {
     }
 
     @Test
-    fun `recordSearch replaces existing query`() = runBlocking {
+    fun recordSearch_replaces_existing_query() = runBlocking {
         dao.recordSearch(SearchHistoryEntity("TU859", 1000L))
         dao.recordSearch(SearchHistoryEntity("TU859", 5000L))
 
@@ -357,7 +357,7 @@ class TimetableDaoTest {
     }
 
     @Test
-    fun `getRecentSearches respects limit`() = runBlocking {
+    fun getRecentSearches_respects_limit() = runBlocking {
         for (i in 1..15) {
             dao.recordSearch(SearchHistoryEntity("query$i", i.toLong() * 1000))
         }
@@ -368,7 +368,7 @@ class TimetableDaoTest {
     }
 
     @Test
-    fun `clearSearchHistory removes all`() = runBlocking {
+    fun clearSearchHistory_removes_all() = runBlocking {
         dao.recordSearch(SearchHistoryEntity("TU859", 1000L))
         dao.clearSearchHistory()
         assertTrue(dao.getRecentSearches(10).isEmpty())
