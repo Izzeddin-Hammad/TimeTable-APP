@@ -208,7 +208,6 @@ object SyncPreferences {
 
     private const val KEY_VIEW_SEMESTER_PREFIX = "view_semester_"
     private const val KEY_VIEW_WEEK_PREFIX = "view_week_"
-    private const val KEY_VIEW_SHOW_ALL_PREFIX = "view_showall_"
     private const val KEY_VIEW_DAY_PREFIX = "view_day_"
 
     /** Save the view state for a course so it survives app restarts. */
@@ -217,13 +216,11 @@ object SyncPreferences {
         courseIdentity: String,
         semester: Int,
         weekStart: String,
-        showAll: Boolean,
         dayIndex: Int
     ) {
         prefs(context).edit().apply {
             putInt("$KEY_VIEW_SEMESTER_PREFIX$courseIdentity", semester)
             putString("$KEY_VIEW_WEEK_PREFIX$courseIdentity", weekStart)
-            putBoolean("$KEY_VIEW_SHOW_ALL_PREFIX$courseIdentity", showAll)
             putInt("$KEY_VIEW_DAY_PREFIX$courseIdentity", dayIndex)
             apply()
         }
@@ -237,10 +234,6 @@ object SyncPreferences {
     fun getSavedWeek(context: Context, courseIdentity: String): String? =
         prefs(context).getString("$KEY_VIEW_WEEK_PREFIX$courseIdentity", null)
 
-    /** Restore the saved showAll (All toggle) for a course, or false if never viewed. */
-    fun getSavedShowAll(context: Context, courseIdentity: String): Boolean =
-        prefs(context).getBoolean("$KEY_VIEW_SHOW_ALL_PREFIX$courseIdentity", false)
-
     /** Restore the saved day index for a course, or 0 (Monday) if never viewed. */
     fun getSavedDayIndex(context: Context, courseIdentity: String): Int =
         prefs(context).getInt("$KEY_VIEW_DAY_PREFIX$courseIdentity", 0)
@@ -250,7 +243,6 @@ object SyncPreferences {
         prefs(context).edit().apply {
             remove("$KEY_VIEW_SEMESTER_PREFIX$courseIdentity")
             remove("$KEY_VIEW_WEEK_PREFIX$courseIdentity")
-            remove("$KEY_VIEW_SHOW_ALL_PREFIX$courseIdentity")
             remove("$KEY_VIEW_DAY_PREFIX$courseIdentity")
             apply()
         }

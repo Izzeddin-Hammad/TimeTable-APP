@@ -142,6 +142,7 @@ fun TimetableScreen(
     var weekMenuExpanded by remember { mutableStateOf(false) }
     var emptyWeeks by rememberSaveable { mutableStateOf(setOf<String>()) }
     var activeWeeks by rememberSaveable { mutableStateOf(setOf<String>()) }
+    var failedWeeks by remember { mutableStateOf(setOf<String>()) }
     var scanningWeeks by remember { mutableStateOf(false) }
     var scannedCount by remember { mutableStateOf(0) }
     var totalToScan by remember { mutableStateOf(0) }
@@ -173,10 +174,12 @@ fun TimetableScreen(
         }
     }
 
-    // ── Background week scanner (parallelized) ──────────────────────
+    // ── Background week scanner (serial) ────────────────────────────
     // After the first successful load, scan all remaining weeks in the
     // background so empty ones disappear from the dropdown automatically.
-    // Uses parallel coroutines (4-way) to reduce scan time from ~30s to ~8s.
+    // Serial (1 worker): the API rate limiter allows 5 req/10s, so
+    // parallelism would exhaust the bucket instantly on any course
+    // with more than 5 weeks — leaving most weeks as "failed."
     LaunchedEffect(events.isNotEmpty(), selectedCourse.identity) {
         if (!events.isNotEmpty() || scanningWeeks) return@LaunchedEffect
         scanningWeeks = true
@@ -189,8 +192,10 @@ fun TimetableScreen(
         totalToScan = toScan.size
         scannedCount = 0
 
-        // 4-way parallel: avoid flooding network, still 4× faster than sequential
-        val parallelism = minOf(4, toScan.size)
+        // Serial scan: the API rate limiter allows 5 requests per 10 seconds,
+        // so a single worker stays safely within quota while a parallel scan
+        // (4 workers) exhausts the bucket instantly on any course with >5 weeks.
+        val parallelism = 1
         val semaphore = Semaphore(parallelism)
         coroutineScope {
             toScan.map { monday ->
@@ -212,7 +217,9 @@ fun TimetableScreen(
                             activeWeeks = activeWeeks + key
                         }
                     } catch (_: Exception) {
-                        // Network error — skip this week, try later
+                        // Network error — track as failed so it's hidden from
+                        // the dropdown without being permanently marked empty
+                        failedWeeks = failedWeeks + monday.format(DATE_FORMATTER)
                     } finally {
                         scannedCount++
                         semaphore.release()
@@ -448,7 +455,7 @@ fun TimetableScreen(
             val autoFirstWeek = remember(activeWeeks) {
                 allAcademicWeeks.firstOrNull { it.format(DATE_FORMATTER) in activeWeeks }
             }
-            val autoSem2Start = remember(activeWeeks, emptyWeeks, scanningWeeks) {
+            val autoSem2Start = remember(activeWeeks, emptyWeeks, failedWeeks, scanningWeeks) {
                 // Only compute after scan finishes — partial data causes false gaps
                 if (scanningWeeks) return@remember null
                 val ordered = allAcademicWeeks.map { it.format(DATE_FORMATTER) }
@@ -503,17 +510,20 @@ fun TimetableScreen(
                 }
             }
             val visibleWeeks = remember(
-                allAcademicWeeks, emptyWeeks, activeSemester,
+                allAcademicWeeks, emptyWeeks, failedWeeks, activeSemester,
                 firstWeekDate, sem2WeekDate
             ) {
                 val semStart = if (activeSemester == 0) firstWeekDate else sem2WeekDate
                 val semEnd = if (activeSemester == 0) sem2WeekDate?.minusWeeks(1) else null
                 // Show all weeks within the semester, progressively hiding
-                // empty weeks as the background scanner confirms them.
+                // empty weeks (confirmed no events) and failed weeks
+                // (rate-limited / network error, need a retry).
                 allAcademicWeeks.filter { w ->
+                    val key = w.format(DATE_FORMATTER)
                     (semStart == null || !w.isBefore(semStart)) &&
                     (semEnd == null || !w.isAfter(semEnd)) &&
-                    w.format(DATE_FORMATTER) !in emptyWeeks
+                    key !in emptyWeeks &&
+                    key !in failedWeeks
                 }
             }
 
@@ -550,7 +560,6 @@ fun TimetableScreen(
                     selectedCourse.identity,
                     semester = activeSemester,
                     weekStart = currentMonday.format(DATE_FORMATTER),
-                    showAll = false,  // permanently false — empty weeks are always hidden
                     dayIndex = selectedDayIndex
                 )
             }
