@@ -16,8 +16,8 @@ android {
         applicationId = "com.example.timetablescraper"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.8"
+        versionCode = 9
+        versionName = "1.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

@@ -202,26 +202,44 @@ class TimetableApiService(
     // ── Response parsing ──────────────────────────────────────────────
 
     private fun parseSearchResponse(body: String): SearchResponse {
-        val json = JSONObject(body)
-        val resultsArray = json.getJSONArray("Results")
+        val json = try {
+            JSONObject(body)
+        } catch (_: Exception) {
+            throw TimetableApiException(
+                httpCode = 502,
+                body = body.take(200),
+                message = "Server returned non-JSON response"
+            )
+        }
+        val resultsArray = json.optJSONArray("Results") ?: JSONArray()
         val results = mutableListOf<SearchResult>()
 
         for (i in 0 until resultsArray.length()) {
-            val item = resultsArray.getJSONObject(i)
-            val name = item.optString("Name", "")
-            val progCode = if (name.contains("/")) name.substringBefore("/") else ""
-            results.add(SearchResult(
-                name = name, programme_code = progCode,
-                identity = item.optString("Identity", ""),
-                type = "Programme", selection_id = "",
-                timetable_type_id = config.programmeTypeId
-            ))
+            try {
+                val item = resultsArray.getJSONObject(i)
+                val name = item.optString("Name", "")
+                val progCode = if (name.contains("/")) name.substringBefore("/") else ""
+                results.add(SearchResult(
+                    name = name, programme_code = progCode,
+                    identity = item.optString("Identity", ""),
+                    type = "Programme", selection_id = "",
+                    timetable_type_id = config.programmeTypeId
+                ))
+            } catch (_: Exception) { /* skip malformed search result */ }
         }
         return SearchResponse(results = results, count = results.size)
     }
 
     private fun parseTimetableResponse(body: String): TimetableResponse {
-        val json = JSONObject(body)
+        val json = try {
+            JSONObject(body)
+        } catch (_: Exception) {
+            throw TimetableApiException(
+                httpCode = 502,
+                body = body.take(200),
+                message = "Server returned non-JSON response"
+            )
+        }
         val catEventsArray = json.optJSONArray("CategoryEvents") ?: JSONArray()
         val events = mutableListOf<ApiEvent>()
 
