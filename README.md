@@ -14,7 +14,7 @@ A prototype Android timetable app that fetches your TU Dublin university schedul
   - **Weekly** — 7-day cache TTL
   - **Custom (days)** — User-defined day interval
 - **Settings Screen** — Access sync settings, academic week configuration, saved courses, cached data statistics
-- **Smart Semester Detection** — Auto-detects Semester 1 & 2 boundaries by scanning all academic weeks in the background (parallelized, 4× faster)
+- **Smart Semester Detection** — Auto-detects Semester 1 & 2 boundaries by scanning all academic weeks with rate-limit-aware serial scanning (2.1s delay between requests)
 - **Week Dropdown** — Numbered weeks (W1, W2, ...) with empty weeks permanently hidden
 - **Semester Tabs** — Wide Semester 1 / Semester 2 tabs for quick semester switching
 - **Subgroup Filtering** — Select specific class groups (A, B, G1, G2, etc.) via dropdown with ⭐ default group pinning; expand unlimited search results simultaneously to compare groups across courses
@@ -25,13 +25,10 @@ A prototype Android timetable app that fetches your TU Dublin university schedul
 - **Client-Side Rate Limiting** — Token Bucket OkHttp interceptor (5 req/10s); returns synthetic 429 to trigger fail-safe fallback when exceeded
 - **Granular Cache Management** — Delete individual course caches from Settings without wiping everything; properly displays course names resolved from cache/saved courses
 - **Corrected Notification Icon** — Custom vector drawable for sync notifications replaces system icons that rendered as solid white squares on some devices
-- **Fixed "All" Toggle** — Correctly shows/hides empty academic weeks; default state strictly hides empty weeks; ALL toggle shows continuous block from Week 1
 - **Subgroup UI Improvements** — 48dp touch target for dropdown arrows; gold star tint (⭐) on pinned/default subgroups for clear visual feedback
-- **Default Week 1** — New/uncached courses now default to the first academic week instead of incorrectly jumping to Week 4
-- **Removed "All" Toggle** — Empty academic weeks are now permanently hidden; the week dropdown only ever displays weeks with scheduled classes (no toggle UX clutter)
+- **Week 1 Default** — New/uncached courses default to `visibleWeeks.first()` (the first non-empty week); eliminates the Week 4 regression at the root
+- **Empty Weeks Permanently Hidden** — Week dropdown only shows weeks not in `emptyWeeks` (confirmed by scanner); empty weeks progressively disappear as the scanner processes them
 - **Subgroup Expand Unlimited** — Removed artificial caps on subgroup expansion in search results; any number of courses can be expanded simultaneously to compare groups
-- **Week 1 Default (Deep Fix)** — New courses now jump to `visibleWeeks.first()` (the first non-empty week) instead of relying on fallback guesswork, eliminating the Week 4 regression at the root
-- **Empty Weeks Permanently Hidden** — Week dropdown only shows weeks not in `emptyWeeks` (confirmed by scanner); initially loaded week is immediately added to `activeWeeks` so it appears without waiting for the scanner; empty weeks progressively disappear as the scanner processes them
 - **In-App Self-Updating** — Queries GitLab Releases API on launch; prompts with an update dialog when a newer version is detected; downloads APK via Android DownloadManager and launches the system package installer
 - **Fail-Safe Fallback** — HTTP 429/500 and network errors fall back to stale cache with an "⚠️ Offline / Cached Mode" banner
 - **Background Sync** — WorkManager periodically refreshes cached timetables with configurable strategy-aware scheduling
@@ -40,8 +37,11 @@ A prototype Android timetable app that fetches your TU Dublin university schedul
 - **Material 3 UI** — Jetpack Compose with dynamic color support and smooth crossfade animations
 - **Defensive JSON Parsing** — All API response parsers wrapped in try/catch; malformed HTML/XML responses emit clean `TimetableApiException(502)` instead of leaking raw `JSONException` text to the UI
 - **Reactive Background Sync** — UI polls Room every 2 minutes; if WorkManager updated cache, the timetable refreshes automatically without manual pull-to-refresh
-- **Performance Optimized** — `derivedStateOf` on group filtering prevents recomposition churn; serial scanner uses simple `for`-loop instead of 30+ async coroutines
+- **Performance Optimized** — `derivedStateOf` on group filtering prevents recomposition churn; serial scanner with 2.1s delay respects rate limiter, preventing cascading 429 failures
 - **Unified Rate Limiter** — Both UI and WorkManager share a single `TimetableApiService.DEFAULT` singleton with one OkHttp client and one token-bucket rate limiter
+- **Instant Cache Load** — Stale-while-revalidate: cached data renders immediately (~5ms), then refreshes silently in background; `toUiEvent` date parsing offloaded to `Dispatchers.Default`
+- **Compose Stability** — `@Immutable` annotations on `TimetableEvent`, `SearchResult`, `ApiEvent`, `CacheResult` let Compose skip unchanged-item recomposition checks
+- **Room Performance** — Composite index on `[courseIdentity, weekStart]` + `fetchedAt` index for cache pruning; DB v7 schema
 
 ## How It Works
 
@@ -61,17 +61,17 @@ UI (Jetpack Compose)
 
 ### Data Flow
 1. User searches for a course → API returns matching programmes (debounced, stale-guarded)
-2. Selecting a course loads the timetable via `TimetableRepository.loadTimetable()`
-3. Repository checks cache first: if fresh within the configured SyncStrategy TTL → zero network
-4. If cache is stale or missing → API call via `RequestDebouncer` (concurrent duplicates consolidated)
-5. Events are parsed (pre-compiled regexes), deduplicated (O(n log n) single pass), and cached
-6. A serial background scanner discovers which weeks have classes and which are empty
-7. Semester boundaries are auto-detected from gaps in the schedule
-8. The week dropdown shows only non-empty weeks, numbered per semester; empty weeks are permanently hidden
-9. View state (semester, week, day, group) is persisted per course across app restarts
-10. WorkManager refreshes cached data per the user's chosen SyncStrategy
-11. A 2-minute background poll in the timetable screen detects WorkManager cache updates and refreshes the UI automatically
-12. Sync completions post notifications with success/fail status and timestamp
+2. Selecting a course loads the timetable via two-phase stale-while-revalidate:
+   - **Phase 1 (instant)**: Room cache read + `toUiEvent` parsing on `Dispatchers.Default` → UI renders in ~5ms
+   - **Phase 2 (background)**: `TimetableRepository.loadTimetable()` — fresh cache short-circuits; stale cache triggers network fetch silently
+3. Events are parsed (pre-compiled regexes), deduplicated (O(n log n) single pass), and cached
+4. A rate-limit-aware serial background scanner (2.1s delay between requests) discovers which weeks have classes
+5. Semester boundaries are auto-detected from 3+ consecutive empty-week gaps in the schedule
+6. The week dropdown shows only non-empty weeks, numbered per semester; empty weeks are permanently hidden
+7. View state (semester, week, day, group) is persisted per course across app restarts
+8. WorkManager refreshes cached data per the user's chosen SyncStrategy
+9. A 2-minute background poll detects WorkManager cache updates and refreshes the UI automatically
+10. Sync completions post notifications with success/fail status and timestamp
 
 ### Sync Strategies
 | Mode | TTL | Behavior |
@@ -111,7 +111,7 @@ Network calls are completely blocked if the app is opened while the cache is sti
 
 ## Download
 
-[**Download latest APK (v1.9)**](https://github.com/Izzeddin-Hammad/TUD-TimeTable-APP/raw/main/releases/TimeTable-v1.9-debug.apk)
+[**Download latest APK (v1.14)**](https://github.com/Izzeddin-Hammad/TUD-TimeTable-APP/raw/main/releases/TimeTable-v1.14-debug.apk)
 
 > Requires Android 8.0+ (API 26). Tap the APK to install — the system will prompt you once per app.
 
