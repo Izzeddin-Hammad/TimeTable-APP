@@ -1,5 +1,6 @@
 package com.example.timetablescraper.api
 
+import androidx.compose.runtime.Immutable
 import com.example.timetablescraper.SyncPreferences
 import com.example.timetablescraper.api.cache.CachedEventEntity
 import com.example.timetablescraper.api.cache.SavedCourseEntity
@@ -192,6 +193,7 @@ class TimetableRepository(
 
     /** Convert a cached entity back to an ApiEvent for the UI layer. */
     private fun CachedEventEntity.toApiEvent() = ApiEvent(
+        id = id,
         module_code = moduleCode,
         title = title,
         type = type,
@@ -290,6 +292,7 @@ enum class CacheSource {
     NETWORK
 }
 
+@Immutable
 data class CacheResult(
     val events: List<ApiEvent>,
     val source: CacheSource,

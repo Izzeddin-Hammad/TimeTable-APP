@@ -12,7 +12,10 @@ import androidx.room.PrimaryKey
  */
 @Entity(
     tableName = "cached_events",
-    indices = [Index(value = ["courseIdentity", "weekStart"])]
+    indices = [
+        Index(value = ["courseIdentity", "weekStart"]),
+        Index(value = ["fetchedAt"])  // speeds up pruneOlderThan() cache cleanup
+    ]
 )
 data class CachedEventEntity(
     @PrimaryKey(autoGenerate = true)

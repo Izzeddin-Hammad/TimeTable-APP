@@ -38,6 +38,7 @@ object TimetableUtils {
             }
 
             TimetableEvent(
+                id = event.id,
                 moduleCode = event.module_code,
                 title = event.title.ifBlank { "Untitled" },
                 type = event.type,
@@ -53,6 +54,7 @@ object TimetableUtils {
             )
         } catch (_: Exception) {
             TimetableEvent(
+                id = event.id,
                 moduleCode = event.module_code.ifBlank { "?" },
                 title = event.title.ifBlank { "Unknown event" },
                 type = "",

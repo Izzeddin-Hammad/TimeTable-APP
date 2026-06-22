@@ -934,7 +934,7 @@ private fun EventsContent(
             contentPadding = PaddingValues(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            items(filteredEvents, key = { "${it.start}-${it.moduleCode}-${it.type}-${it.room}" }) { event ->
+            items(filteredEvents, key = { it.id }) { event ->
                 TimetableEventCard(event = event)
             }
         }

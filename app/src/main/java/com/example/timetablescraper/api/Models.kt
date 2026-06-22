@@ -1,5 +1,7 @@
 package com.example.timetablescraper.api
 
+import androidx.compose.runtime.Immutable
+
 /**
  * Request body for POST /search/data
  */
@@ -8,6 +10,7 @@ data class SearchRequest(val query: String)
 /**
  * A single search result from the server.
  */
+@Immutable
 data class SearchResult(
     val name: String,
     val programme_code: String,
@@ -33,6 +36,7 @@ data class TimetableRequest(val url: String)
 /**
  * A raw event as returned by the API.
  */
+@Immutable
 data class ApiEvent(
     val module_code: String,
     val title: String,
@@ -41,7 +45,8 @@ data class ApiEvent(
     val room: String,
     val start: String,   // ISO-8601: "2025-10-07T10:00:00"
     val end: String,     // ISO-8601: "2025-10-07T12:00:00"
-    val group: String = ""  // e.g. "A", "B", "G1" from the event name
+    val group: String = "",  // e.g. "A", "B", "G1" from the event name
+    val id: Long = 0         // Room primary key (0 for network-fresh events)
 )
 
 /**
@@ -56,6 +61,7 @@ data class TimetableResponse(
 /**
  * UI-ready event model with computed day and time range.
  */
+@Immutable
 data class TimetableEvent(
     val moduleCode: String,
     val title: String,
@@ -68,5 +74,6 @@ data class TimetableEvent(
     val dayIndex: Int,       // 0=Mon … 4=Fri
     val timeRange: String,   // "10:00 - 12:00"
     val weekStart: String,   // the Monday date this event belongs to
-    val group: String = ""   // e.g. "A", "B", "G1" — sub-group identifier
+    val group: String = "",  // e.g. "A", "B", "G1" — sub-group identifier
+    val id: Long = 0         // Room primary key — stable identity for LazyColumn
 )
