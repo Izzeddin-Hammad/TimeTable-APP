@@ -1,7 +1,7 @@
 # Privacy Policy — TimeTable
 
 **Last updated:** 23 June 2026  
-**App version:** 1.14  
+**App version:** 1.15  
 **Developer:** Izzeddin Hammad  
 **Repository:** [Izzeddin-Hammad/TUD-TimeTable-APP](https://gitlab.com/Izzeddin-Hammad/TUD-TimeTable-APP)
 
@@ -46,7 +46,7 @@ TU Dublin Scientia Publish API
 
 | Data type | Where | Purpose | Can you delete it? |
 |---|---|---|---|
-| Cached timetable events | Room DB (`timetable_cache.db`) | Offline access to your schedule | Yes — Settings → Clear Cache |
+| Cached timetable events (module code, title, lecturer, room, dates, group) | Room DB (`timetable_cache.db`) | Offline access to your schedule | Yes — Settings → Clear Cache |
 | Saved/bookmarked courses | Room DB | Quick access to frequent courses | Yes — Settings → Remove |
 | Search history | Room DB | Quick re-search | Yes — Settings → Clear History |
 | Sync preferences | SharedPreferences | Your sync strategy, starred course, UI state | Yes — Clear app data |
