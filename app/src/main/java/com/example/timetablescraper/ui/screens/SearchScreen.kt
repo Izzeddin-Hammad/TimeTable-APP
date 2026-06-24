@@ -111,15 +111,15 @@ fun SearchScreen(
                     }) {
                         Icon(Icons.Default.History, contentDescription = "Search history")
                     }
-                    IconButton(onClick = {
-                        onSettingsClick()
-                    }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
-                    }
                     if (hasStarredCourse) {
                         IconButton(onClick = onHomeClick) {
                             Icon(Icons.Default.Home, contentDescription = "Go to pinned course")
                         }
+                    }
+                    IconButton(onClick = {
+                        onSettingsClick()
+                    }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
                 }
             )
