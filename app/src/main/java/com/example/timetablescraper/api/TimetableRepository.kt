@@ -276,6 +276,11 @@ class TimetableRepository(
         }
     }
 
+    /** Delete a single search history entry by query. */
+    suspend fun deleteSearchEntry(query: String) {
+        dao.deleteSearchEntry(query)
+    }
+
     /** Clear all search history. */
     suspend fun clearSearchHistory() {
         dao.clearSearchHistory()

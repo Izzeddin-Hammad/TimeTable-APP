@@ -128,6 +128,10 @@ interface TimetableDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun recordSearch(entry: SearchHistoryEntity)
 
+    /** Delete a single search history entry by query text. */
+    @Query("DELETE FROM search_history WHERE `query` = :query")
+    suspend fun deleteSearchEntry(query: String)
+
     /** Clear all search history. */
     @Query("DELETE FROM search_history")
     suspend fun clearSearchHistory()

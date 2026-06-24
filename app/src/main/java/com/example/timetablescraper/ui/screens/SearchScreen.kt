@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
@@ -390,13 +391,36 @@ fun SearchScreen(
                                 }
                                 IconButton(onClick = {
                                     coroutineScope.launch {
-                                        repository.clearSearchHistory()
+                                        repository.deleteSearchEntry(entry.query)
                                         historyEntries = repository.getRecentSearches()
                                     }
                                 }) {
                                     Icon(Icons.Default.Close, "Remove", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
                                 }
                             }
+                        }
+                        // ── Delete All button ──
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    coroutineScope.launch {
+                                        repository.clearSearchHistory()
+                                        historyEntries = repository.getRecentSearches()
+                                    }
+                                }
+                                .padding(vertical = 10.dp, horizontal = 4.dp),
+                            horizontalArrangement = Arrangement.Start,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Delete, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                "Delete All",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.error
+                            )
                         }
                     }
                 }
